@@ -1,6 +1,7 @@
 type ScannedServer = {
 	server: Server;
 	path: string[];
+	action: string;
 };
 
 export async function main(ns: NS) {
@@ -32,7 +33,7 @@ function scan(ns: NS, start = "home"): ScannedServer[] {
 	const servers: ScannedServer[] = [];
 	for (const s of visited.keys()) {
 		const entry = visited.get(s)!;
-		servers.push({server: ns.getServer(entry.sName),path: entry.path});
+		servers.push({server: ns.getServer(entry.sName),path: entry.path,action:'waiting...'});
 	}
 	return servers;
 }
@@ -57,7 +58,7 @@ function serverCheckInit(ns: NS): [ScannedServer[], ScannedServer[], ScannedServ
 }
 
 async function display(ns: NS, startTime: number, servers: [ScannedServer[], ScannedServer[], ScannedServer[]]) {
-	const rooted = servers[0];
+	const rooted = runRootServers(ns,servers[0]);
 	const unrooted = servers[1];
 	const owned = servers[2];
 	ns.clearLog()
@@ -72,11 +73,9 @@ async function display(ns: NS, startTime: number, servers: [ScannedServer[], Sca
 		if (minSecurity > 0) {
 			maxSecurity = minSecurity + (minSecurity/10) + 1
 		}
-		let action = "Waiting..."
 		
-
 		let context: string
-		context = `${s.server.hostname} | ${ns.format.number(currentMoney,2)}/${ns.format.number(maxMoney,2)} | ${currentSecurity}/${maxSecurity}`
+		context = `${s.server.hostname} | ${ns.format.number(currentMoney,2)}/${ns.format.number(maxMoney,2)} | ${currentSecurity}/${maxSecurity} | ${s.action}`
 		ns.print(`${context}\n`);
 		ns.ui.renderTail();
 	}
@@ -105,4 +104,12 @@ async function display(ns: NS, startTime: number, servers: [ScannedServer[], Sca
 	// 	ns.print(`${s.server.hostname}\n`);
 	// 	ns.ui.renderTail();
 	// }
+}
+
+function runRootServers(ns:NS,servers:ScannedServer[]):ScannedServer[] {
+	for (const s in servers) {
+		
+	}
+
+	return servers
 }
