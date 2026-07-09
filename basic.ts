@@ -65,18 +65,7 @@ async function display(ns: NS, startTime: number, servers: [ScannedServer[], Sca
 
 	ns.print("rooted servers:\n");
 	for (const s of rooted) {
-		const currentMoney: number = s.server.moneyAvailable ?? 0
-		const maxMoney: number = s.server.moneyMax ?? 0
-		const currentSecurity: number = s.server.hackDifficulty ?? 0
-		const minSecurity = s.server.minDifficulty ?? 0
-		let maxSecurity = 0
-		if (minSecurity > 0) {
-			maxSecurity = minSecurity + (minSecurity/10) + 1
-		}
-		
-		let context: string
-		context = `${s.server.hostname} | ${ns.format.number(currentMoney,2)}/${ns.format.number(maxMoney,2)} | ${currentSecurity}/${maxSecurity} | ${s.action}`
-		ns.print(`${context}\n`);
+
 		ns.ui.renderTail();
 	}
 
@@ -106,11 +95,79 @@ async function display(ns: NS, startTime: number, servers: [ScannedServer[], Sca
 	// }
 }
 
-function runRootServers(ns:NS,servers:ScannedServer[]):ScannedServer[] {
-	for (const s in servers) {
-		
+function runRootServers(ns:NS,servers:ScannedServer[]):string[] {
+	const weakMem = ns.getScriptRam("/payload/weaken.ts");
+	const growMem = ns.getScriptRam("/payload/grow.ts");
+	const hackMem = ns.getScriptRam("/payload/hack.ts");
+	const pWeak = "/payload/weaken.ts";
+	const pGrow = "/payload/grow.ts";
+	const pHack = "/payload/hack.ts";
+	const context:string[] = [];
+	for (const s of servers) {
+		const freeRam = s.server.maxRam - s.server.ramUsed;
+		let output:string;
+		const currentSec = s.server.hackDifficulty ?? 0;
+		const thresholdSec = (s.server.minDifficulty ?? 0) + 1;
+		const currentMoney = s.server.moneyAvailable ?? 0
+		const maxMoney = s.server.moneyMax ?? 0
+		if (ns.ps(s.server.hostname).length === 0) {
+			let threads:number;
+			switch (true) {
+				case maxMoney === 0:
+					s.action = "N/A";
+					break;
+				
+				case currentSec > thresholdSec:
+					if (!ns.fileExists(pWeak, s.server.hostname)) ns.scp(pWeak,s.server.hostname,"home");
+					threads = Math.floor(freeRam - weakMem);
+					if (threads === 0 || !Number.isFinite(threads)) break;
+					ns.exec(pWeak,s.server.hostname,threads);
+					s.action = "Weakening..."
+					break;
+
+				case currentMoney < maxMoney / 10:
+					if (!ns.fileExists(pGrow, s.server.hostname)) ns.scp(pGrow, s.server.hostname, "home");
+					threads = Math.floor(freeRam - growMem);
+					if (threads === 0 || !Number.isFinite(threads)) break;
+					ns.exec(pGrow,s.server.hostname,threads);
+					s.action = "Growing..."
+					break;
+
+				default:
+					if (!ns.fileExists(pHack, s.server.hostname)) ns.scp(pGrow,s.server.hostname,"home");
+					threads = Math.floor(freeRam - hackMem);
+					if (threads === 0 || !Number.isFinite(threads)) break;
+					ns.exec(pHack,s.server.hostname,threads)
+					s.action = "Hacking..."
+					break;
+			}
+		} else {
+			const procs = ns.ps(s.server.hostname);
+			for (const p of procs) {
+				s.action = recallAction(p.filename)
+			}
+		}
+		if (rankAction(s.action) === 0) {
+			context.push(`${s.server.hostname} | $${s.server.moneyAvailable}/$${s.server.moneyMax}`)
+		}
+
 	}
 
-	return servers
+	return context
 }
 
+function recallAction(str:string):string {
+	str = String(str ?? "").toLowerCase();
+	if (str.includes("hack")) return "Hacking...";
+	if (str.includes("grow")) return "Growing...";
+	if (str.includes("weak")) return "Weakening...";
+	return "N/A";
+}
+
+function rankAction(str:string):number {
+	str = String(str ?? "").toLowerCase();
+	if (str.includes("hack")) return 0;
+	if (str.includes("grow")) return 1;
+	if (str.includes("weak")) return 3;
+	return 4;
+}
