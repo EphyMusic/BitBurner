@@ -113,3 +113,4 @@ function runRootServers(ns:NS,servers:ScannedServer[]):ScannedServer[] {
 
 	return servers
 }
+
