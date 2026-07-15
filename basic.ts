@@ -59,34 +59,6 @@ function serverCheckInit(ns: NS): [ScannedServer[], ScannedServer[], ScannedServ
 	return [rooted, unrooted, owned];
 }
 
-async function display(ns: NS, startTime: number, servers: string[][]) {
-	const rooted = servers[0];
-	const unrooted = servers[1];
-	const owned = servers[2];
-	ns.clearLog()
-
-	const rootGroups:string[][] = makeGroup(rooted);
-	const unrootGroups:string[][] = makeGroup(unrooted);
-
-	const rGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % rootGroups.length);
-	for (const s of rootGroups[rGroupSel]) {
-		ns.print(`${s}\n`)
-		ns.ui.renderTail();
-	}
-
-	const unGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % unrootGroups.length);
-	for (const s of unrootGroups[unGroupSel]) {
-		ns.print(`${s}\n`);
-		ns.ui.renderTail();
-	}
-	
-	// ns.print("\nowned servers:\n");
-	// for (const s of owned) {
-	// 	ns.print(`${s.server.hostname}\n`);
-	// 	ns.ui.renderTail();
-	// }
-}
-
 function runRootServers(ns:NS,servers:ScannedServer[]):string[] {
 	const weakMem = ns.getScriptRam("/payload/weaken.ts");
 	const growMem = ns.getScriptRam("/payload/grow.ts");
@@ -156,6 +128,51 @@ function runRootServers(ns:NS,servers:ScannedServer[]):string[] {
 	}
 	const context = [ctx1.join(`\n`),ctx2.join(`\n`),ctx3.join(`\n`),ctx4.join(`\n`)]
 	return context
+}
+
+function runUnrootServers(ns:NS, servers:ScannedServer[]) {
+	const hackLV = ns.getHackingLevel()
+	for (const s of servers) {
+		if (s.server.hackDifficulty && s.server.hackDifficulty <= hackLV) {
+			if (s.server.numOpenPortsRequired && s.server.openPortCount && s.server.numOpenPortsRequired > s.server.openPortCount) {
+				const reqPorts = s.server.numOpenPortsRequired;
+				let openPorts = s.server.openPortCount;
+				const actions = [ns.brutessh,ns.ftpcrack,ns.relaysmtp,ns.httpworm] 
+				while (openPorts < reqPorts) {
+					
+				}
+
+			}
+		}
+	}
+}
+
+async function display(ns: NS, startTime: number, servers: string[][]) {
+	const rooted = servers[0];
+	const unrooted = servers[1];
+	const owned = servers[2];
+	ns.clearLog()
+
+	const rootGroups:string[][] = makeGroup(rooted);
+	const unrootGroups:string[][] = makeGroup(unrooted);
+
+	const rGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % rootGroups.length);
+	for (const s of rootGroups[rGroupSel]) {
+		ns.print(`${s}\n`)
+		ns.ui.renderTail();
+	}
+
+	const unGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % unrootGroups.length);
+	for (const s of unrootGroups[unGroupSel]) {
+		ns.print(`${s}\n`);
+		ns.ui.renderTail();
+	}
+	
+	// ns.print("\nowned servers:\n");
+	// for (const s of owned) {
+	// 	ns.print(`${s.server.hostname}\n`);
+	// 	ns.ui.renderTail();
+	// }
 }
 
 function recallAction(str:string):string {
