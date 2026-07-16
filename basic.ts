@@ -159,13 +159,11 @@ async function display(ns: NS, startTime: number, servers: string[][]) {
 	const rGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % rootGroups.length);
 	for (const s of rootGroups[rGroupSel]) {
 		ns.print(`${s}\n`)
-		ns.ui.renderTail();
 	}
 
 	const unGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % unrootGroups.length);
 	for (const s of unrootGroups[unGroupSel]) {
 		ns.print(`${s}\n`);
-		ns.ui.renderTail();
 	}
 	
 	// ns.print("\nowned servers:\n");
@@ -173,6 +171,8 @@ async function display(ns: NS, startTime: number, servers: string[][]) {
 	// 	ns.print(`${s.server.hostname}\n`);
 	// 	ns.ui.renderTail();
 	// }
+
+	ns.ui.renderTail()
 }
 
 function recallAction(str:string):string {
