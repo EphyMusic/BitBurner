@@ -2,18 +2,6 @@ type ScannedServer = {
 	server: Server;
 	path: string[];
 	action: string;
-};
-
-export async function main(ns: NS) {
-	ns.disableLog("ALL");
-	ns.ui.openTail();
-	const startTime = Date.now() / 2000
-	while (true) {
-		const baseServers = serverCheckInit(ns)
-		const servers = [runRootServers(ns,baseServers[1]),[""],[""]]
-		await display(ns, startTime, servers);
-		await ns.sleep(20)
-	}
 }
 
 function scan(ns: NS, start = "home"): ScannedServer[] {
@@ -130,6 +118,34 @@ function runRootServers(ns:NS,servers:ScannedServer[]):string[] {
 	return context
 }
 
+function _canRoot(ns:NS,server:ScannedServer) {
+	if (server.server.hackDifficulty && ns.getHackingLevel() >= server.server.hackDifficulty) return true;
+	return false;
+}
+
+function _nukeServer(ns:NS,server:ScannedServer) {
+	return ns.nuke(server.server.hostname);
+}
+
+function _crackPorts(ns:NS,server:ScannedServer):Boolean {
+	const actions:Object = {
+		"BruteSSH.exe":ns.brutessh,
+		"FTPCrack.exe":ns.ftpcrack,
+		"RelaySMTP.exe":ns.relaysmtp,
+		"HTTPWorm.exe":ns.httpworm,
+		"SQLInject.exe":ns.sqlinject
+		};
+	let openPorts:number = 0;
+	const reqPorts = server.server.numOpenPortsRequired as number
+	for (const [file,fn] of Object.entries(actions)) {
+		if (openPorts >= reqPorts) return true;
+		if (!ns.fileExists(file,"home")) return false;
+		const res = fn(server.server.hostname);
+		if (res) openPorts ++;
+	}
+	return false;
+}
+
 function runUnrootServers(ns:NS, servers:ScannedServer[]) {
 	const hackLV = ns.getHackingLevel()
 	for (const s of servers) {
@@ -206,4 +222,17 @@ function makeGroup(servers:string[]):string[][] {
 	}
 	fullGroup.push(group);
 	return fullGroup;
+}
+
+
+export async function main(ns: NS) {
+	ns.disableLog("ALL");
+	ns.ui.openTail();
+	const startTime = Date.now() / 2000
+	while (true) {
+		const baseServers = serverCheckInit(ns)
+		const servers = [runRootServers(ns,baseServers[1]),[""],[""]]
+		await display(ns, startTime, servers);
+		await ns.sleep(20)
+	}
 }
