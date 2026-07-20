@@ -115,7 +115,7 @@ function runRootServers(ns:NS,servers:ScannedServer[]):string[] {
 		
 	}
 	const context = [ctx1.join(`\n`),ctx2.join(`\n`),ctx3.join(`\n`),ctx4.join(`\n`)]
-	return context
+	return context;
 }
 
 function _canRoot(ns:NS,server:ScannedServer) {
@@ -143,24 +143,27 @@ function _crackPorts(ns:NS,server:ScannedServer):Boolean {
 		const res = fn(server.server.hostname);
 		if (res) openPorts ++;
 	}
+	if (openPorts >= reqPorts) return true;
 	return false;
 }
 
 function runUnrootServers(ns:NS, servers:ScannedServer[]) {
-	const hackLV = ns.getHackingLevel()
+	const hackLV:number = ns.getHackingLevel();
+	let output:string[] = []
 	for (const s of servers) {
-		if (s.server.hackDifficulty && s.server.hackDifficulty <= hackLV) {
+		if (_canRoot(ns,s)) {
 			if (s.server.numOpenPortsRequired && s.server.openPortCount && s.server.numOpenPortsRequired > s.server.openPortCount) {
-				const reqPorts = s.server.numOpenPortsRequired;
-				let openPorts = s.server.openPortCount;
-				const actions = [ns.brutessh,ns.ftpcrack,ns.relaysmtp,ns.httpworm] 
-				while (openPorts < reqPorts) {
-					
+				const res = _crackPorts(ns,s);
+				if (res) {
+					const nuked = _nukeServer(ns,s);
+					if (nuked) s.server = ns.getServer(s.server.hostname);
+					continue;
 				}
-
 			}
 		}
+		output.push('${s.server.hostname}')
 	}
+	return output
 }
 
 async function display(ns: NS, startTime: number, servers: string[][]) {
@@ -231,7 +234,7 @@ export async function main(ns: NS) {
 	const startTime = Date.now() / 2000
 	while (true) {
 		const baseServers = serverCheckInit(ns)
-		const servers = [runRootServers(ns,baseServers[1]),[""],[""]]
+		const servers = [runRootServers(ns,baseServers[1]),runUnrootServers(ns,baseServers[2]),[""]]
 		await display(ns, startTime, servers);
 		await ns.sleep(20)
 	}
