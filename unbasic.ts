@@ -1,4 +1,4 @@
-import {NS,Server} from "@ns"
+//import {NS,Server} from "@ns"
 
 //Color utils
 export function colorize(text: string, r: number, g: number, b: number) {
@@ -41,7 +41,7 @@ export async function initTail(ns: NS,title: string,width: number,height: number
     ns.ui.setTailFontSize(fontSize??14);
     ns.ui.moveTail(x-width,0);
     ns.ui.renderTail();
-    ns.atExit(ns.ui.closeTail);
+    //ns.atExit(ns.ui.closeTail);
 }
 
 //Server Class
@@ -90,6 +90,46 @@ class ScannedServer {
         return false
     }
 
+	getRoot(ns:NS):boolean {
+        if (!this.canRoot(ns)) return false;
+        const reqPorts = this.server.numOpenPortsRequired ?? 0
+        if (this._numPortsCanOpen(ns) >= reqPorts ) {
+            if (this._crackPorts(ns) >= reqPorts && ns.nuke(this.server.hostname)) return true;
+        }
+		return false;
+	}
+
+    _crackPorts(ns:NS):number {
+        const actions = [
+            ns.brutessh,
+            ns.ftpcrack,
+            ns.relaysmtp,
+            ns.httpworm,
+            ns.sqlinject
+        ]
+        let openPorts = 0
+        for (const action of actions) {
+            if (!action(this.server.hostname)) break;
+            openPorts++
+        }
+        return openPorts;
+    }
+
+	_numPortsCanOpen(ns:NS):number {
+        let possible:number = 0;
+        const progs = [
+            "BruteSSH.exe",
+            "FTPCrack.exe",
+            "relaySMTP.exe",
+            "HTTPWorm.exe",
+            "SQLInject.exe"
+        ];
+        for (const prog of progs) {
+            if (ns.fileExists(prog,"home")) possible ++;
+        }
+		return possible;
+	}
+
     action(ns:NS):string {
         let output = "Waiting...";
         const procs = ns.ps(this.server.hostname)
@@ -104,9 +144,9 @@ class ScannedServer {
     }
 
     sendFiles(ns:NS):boolean {
-        const pWeaken = "/payload/weaken.ts"
-        const pGrow = "/payload/grow.ts"
-        const pHack = "/payload/hack.ts"
+        const pWeaken = "/payload/weaken.ts";
+        const pGrow = "/payload/grow.ts";
+        const pHack = "/payload/hack.ts";
         const target = this.server.hostname;
 
         if (ns.fileExists(pWeaken,target) && ns.fileExists(pGrow,target) && ns.fileExists(pHack,target)) return true;
@@ -115,9 +155,79 @@ class ScannedServer {
         return true;
     }
 
-    run(ns:NS):void {
+    _calculateThreads(ns:NS,script:string):number {
+        this.refreshServer(ns);
+        const freeRam = this.server.maxRam - this.server.ramUsed;
+        const scriptRam = ns.getScriptRam(script);
+        return Math.floor(freeRam / scriptRam);
+    }
+
+    killOld(ns:NS) {
+        const old = ns.ps(this.server.hostname);
+        if (old.length > 0) {
+            for (const proc of old) {
+                ns.kill(proc.pid);
+            }
+        }
+    }
+
+    weakenSelf(ns:NS):boolean {
+        this.killOld(ns)
+        const threads = this._calculateThreads(ns,"/payload/weaken.ts")
+        if (!ns.exec("/payload/weaken.ts",this.server.hostname,threads)) return false;
+        return true;
+    }
+
+    growSelf(ns:NS):boolean {
+        this.killOld(ns)
+        const threads = this._calculateThreads(ns,"payload/grow.ts");
+        if (!ns.exec("/payload/weaken.ts", this.server.hostname,threads)) return false;
+        return true;
+
+    }
+
+    hackSelf(ns:NS):boolean {
+        this.killOld(ns)
+        const threads = this._calculateThreads(ns,"payload/hack.ts");
+        if (!ns.exec("/payload/hack.ts",this.server.hostname,threads)) return false;
+        return true;
+    }
+
+    runSelf(ns:NS):boolean {
+        if (this.server.hostname === "home") return false;
         this.refreshServer(ns)
         //If we don't have root, we should try to get root. If we do have root, then we should do all the root things.
+		if (!this.hasRoot(ns)) {
+            // ns.tprint(`No root on ${this.server.hostname}`)
+            if (this.canRoot(ns)) {
+                // ns.tprint(`Can root on ${this.server.hostname}`)
+			    if (!this.getRoot(ns)) {
+                    // ns.tprint(`could not get root on ${this.server.hostname}`)
+                };
+            } else {
+                // ns.tprint(`Cannot root on ${this.server.hostname}`)
+                return false;
+            }
+        }
+
+        // ns.tprint(`Have root on ${this.server.hostname}`)
+        if (!this.sendFiles(ns)) {
+            // ns.tprint(`Could not send files to ${this.server.hostname}` )
+            return false;
+            }
+        // ns.tprint(`Files sent/already present on ${this.server.hostname}`)
+        if (this.action(ns) !== "Weakening..." && this.shouldWeaken(ns)) {
+            // ns.tprint(`Weakening ${this.server.hostname}`)
+            return this.weakenSelf(ns);
+        } else if (this.action(ns) !== "Growing..." && this.shouldGrow(ns)) {
+            // ns.tprint(`Growing ${this.server.hostname}`)
+            return this.growSelf(ns);
+        } else if (this.action(ns) !== "Hacking..."){
+            // ns.tprint(`Hacking ${this.server.hostname}`)
+            return this.hackSelf(ns);
+        }
+        // ns.tprint(`Nothing to do on ${this.server.hostname}`)
+        return true;
     }
 
     display(ns:NS):string {
@@ -155,4 +265,95 @@ class ScannedServer {
         output += ` | bd?:${obd}`
         return output;
     }
+}
+
+function scan(ns: NS, start = "home"): ScannedServer[] {
+	const visited = new Map<string, { sName: string; path: string[] }>();
+
+	function dfs(host: string, path: string[] = []) {
+		const fullPath = [...path, host];
+		visited.set(host, { sName: host, path: fullPath });
+
+		for (const next of ns.scan(host)) {
+			if (!visited.has(next)) {
+				dfs(next, fullPath);
+			}
+		}
+	}
+
+	dfs(start);
+
+	const servers: ScannedServer[] = [];
+    let port = 0
+	for (const s of visited.keys()) {
+		const entry = visited.get(s)!;
+        if (entry.sName == "home") continue;
+		servers.push(new ScannedServer(ns,entry.sName,entry.path,port))
+        port ++
+	}
+	return servers;
+}
+
+function display(ns:NS,servers:ScannedServer[],startTime:number) {
+    const root:string[] = [];
+    const unroot:string[] = [];
+
+    for (const server of servers) {
+        if (server.hasRoot(ns)) {
+            root.push(server.display(ns));
+        } else {
+            unroot.push(server.display(ns));
+        }
+    }
+
+    const unrootGroups = makeGroup(unroot);
+    const rootGroups = makeGroup(root);
+    ns.print("Root")
+    const rGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % rootGroups.length);
+    for (const s of rootGroups[rGroupSel]) {
+		ns.print(`${s}\n`)
+	}
+    ns.print("Unroot")
+	const unGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % unrootGroups.length);
+	for (const s of unrootGroups[unGroupSel]) {
+		ns.print(`${s}\n`);
+	}
+}
+
+function makeGroup(servers:string[]):string[][] {
+	const fullGroup:string[][] = []
+	let group:string[] = []
+	let x = 0;
+	for (const s of servers) {
+		if (x >= 5) {
+			x = 0;
+			fullGroup.push(group);
+			group = [];
+		}
+		group.push(s);
+		x += 1;
+	}
+	fullGroup.push(group);
+	return fullGroup;
+}
+
+export async function main(ns:NS) {
+    const startTime = Date.now()
+    initTail(ns,"Basic", 500, 500, 12)
+    // ns.tprint("tail started")
+    const servers = scan(ns,"home")
+    // ns.tprint("servers created")
+    // ns.tprint(`${servers.length} Servers`)
+    while (true) {
+        ns.clearLog()
+        // ns.tprint("beginning")
+        for (const server of servers) {
+            server.runSelf(ns)
+        }
+        display(ns,servers,startTime)
+        // ns.tprint("finishing")
+        ns.ui.renderTail()
+        await ns.sleep(10)
+    }
+    // ns.tprint("something is wrong.")
 }
