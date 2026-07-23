@@ -42,7 +42,7 @@ export async function initTail(ns: NS,title: string,width: number,height: number
     ns.ui.setTailFontSize(fontSize??14);
     ns.ui.moveTail(x-width,0);
     ns.ui.renderTail();
-    //ns.atExit(() => exitTasks(ns));
+    ns.atExit(() => exitTasks(ns));
 }
 
 function exitTasks(ns:NS) {
@@ -90,7 +90,7 @@ class ScannedServer {
         const maxMoney = this.server.moneyMax ?? 0;
         const currMoney = this.server.moneyAvailable?? 0;
         if (maxMoney === 0) return false;
-        if (currMoney > maxMoney / 10) return true;
+        if (currMoney < maxMoney / 10) return true;
         return false;
     }
 
@@ -175,7 +175,7 @@ class ScannedServer {
         this.refreshServer(ns);
         const freeRam = this.server.maxRam - this.server.ramUsed;
         const scriptRam = ns.getScriptRam(script);
-        return Math.floor(freeRam / scriptRam);
+        return Math.max(0,Math.floor(freeRam / scriptRam));
     }
 
     killOld(ns:NS) {
@@ -186,7 +186,7 @@ class ScannedServer {
             }
         }
     }
-
+    
     weakenSelf(ns:NS):boolean {
         this.killOld(ns)
         const threads = this._calculateThreads(ns,"/payload/weaken.ts")
@@ -196,15 +196,15 @@ class ScannedServer {
 
     growSelf(ns:NS):boolean {
         this.killOld(ns)
-        const threads = this._calculateThreads(ns,"payload/grow.ts");
-        if (!ns.exec("/payload/weaken.ts", this.server.hostname,threads)) return false;
+        const threads = this._calculateThreads(ns,"/payload/grow.ts");
+        if (!ns.exec("/payload/grow.ts", this.server.hostname,threads)) return false;
         return true;
 
     }
 
     hackSelf(ns:NS):boolean {
         this.killOld(ns)
-        const threads = this._calculateThreads(ns,"payload/hack.ts");
+        const threads = this._calculateThreads(ns,"/payload/hack.ts");
         if (!ns.exec("/payload/hack.ts",this.server.hostname,threads)) return false;
         return true;
     }
@@ -232,13 +232,14 @@ class ScannedServer {
             return false;
             }
         // ns.tprint(`Files sent/already present on ${this.server.hostname}`)
-        if (this.action(ns) !== "Weakening..." && this.shouldWeaken(ns)) {
+        const currentAction = this.action(ns)
+        if (currentAction !== "Weakening..." && this.shouldWeaken(ns)) {
             // ns.tprint(`Weakening ${this.server.hostname}`)
             return this.weakenSelf(ns);
-        } else if (this.action(ns) !== "Growing..." && this.shouldGrow(ns)) {
+        } else if (currentAction !== "Growing..." && this.shouldGrow(ns)) {
             // ns.tprint(`Growing ${this.server.hostname}`)
             return this.growSelf(ns);
-        } else if (this.action(ns) !== "Hacking..."){
+        } else if (currentAction !== "Hacking..."){
             // ns.tprint(`Hacking ${this.server.hostname}`)
             return this.hackSelf(ns);
         }
@@ -324,18 +325,32 @@ function display(ns:NS,servers:ScannedServer[],startTime:number) {
 
     const rootGroups = makeGroup(root);
     const unrootGroups = makeGroup(unroot);
-    ns.print("Root")
-    const rGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % rootGroups.length);
-    ns.tprint(rootGroups.length)
-    exitTasks(ns); //remove
-    for (const s of rootGroups[rGroupSel]) {
-		ns.print(`${s}\n`)
-	}
-    ns.print("Unroot")
-	const unGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % unrootGroups.length);
-	for (const s of unrootGroups[unGroupSel]) {
-		ns.print(`${s}\n`);
-	}
+
+    // elapsed ms since script start
+    const elapsedMs = Date.now() - startTime;
+    // switch groups every 2 seconds
+    const tick = Math.floor(elapsedMs / 2000);
+
+    const rGroupSel = rootGroups.length > 0 ? tick % rootGroups.length : 0;
+    const unGroupSel = unrootGroups.length > 0 ? tick % unrootGroups.length : 0;
+
+    ns.print("Root");
+    if (rootGroups.length > 0) {
+        for (const s of rootGroups[rGroupSel]) {
+            ns.print(`${s}\n`);
+        }
+    } else {
+        ns.print("(none)\n");
+    }
+
+    ns.print("Unroot");
+    if (unrootGroups.length > 0) {
+        for (const s of unrootGroups[unGroupSel]) {
+            ns.print(`${s}\n`);
+        }
+    } else {
+        ns.print("(none)\n");
+    }
 }
 
 function makeGroup(servers:string[]):string[][] {
