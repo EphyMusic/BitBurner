@@ -31,6 +31,7 @@ function rgbToAnsiBg(r: number, g: number, b: number) {
     return ANSI.bgRgb(clampByte(r), clampByte(g), clampByte(b));
 }
 
+// Startup and Shutdown
 export async function initTail(ns: NS,title: string,width: number,height: number,fontSize: number) {
     ns.disableLog("ALL");
     ns.ui.openTail();
@@ -41,7 +42,22 @@ export async function initTail(ns: NS,title: string,width: number,height: number
     ns.ui.setTailFontSize(fontSize??14);
     ns.ui.moveTail(x-width,0);
     ns.ui.renderTail();
-    //ns.atExit(ns.ui.closeTail);
+    //ns.atExit(() => exitTasks(ns));
+}
+
+function exitTasks(ns:NS) {
+    const servers = scan(ns,"home");
+    ns.ui.closeTail()
+    for (const s of servers) {
+        if (s.server.hostname == "home") continue;
+        ns.tprint(`Killing scripts on ${s.server.hostname}`);
+        const procs = ns.ps(s.server.hostname);
+        if (procs.length > 0) {
+            for (const proc of procs) {
+                ns.kill(proc.pid)
+            }
+        }
+    }
 }
 
 //Server Class
@@ -306,10 +322,12 @@ function display(ns:NS,servers:ScannedServer[],startTime:number) {
         }
     }
 
-    const unrootGroups = makeGroup(unroot);
     const rootGroups = makeGroup(root);
+    const unrootGroups = makeGroup(unroot);
     ns.print("Root")
     const rGroupSel:number = Math.floor((Date.now() / 2000 - startTime) % rootGroups.length);
+    ns.tprint(rootGroups.length)
+    exitTasks(ns); //remove
     for (const s of rootGroups[rGroupSel]) {
 		ns.print(`${s}\n`)
 	}
