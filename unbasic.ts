@@ -50,9 +50,9 @@ function exitTasks(ns:NS) {
     ns.ui.closeTail()
     for (const s of servers) {
         if (s.server.hostname == "home") continue;
-        ns.tprint(`Killing scripts on ${s.server.hostname}`);
         const procs = ns.ps(s.server.hostname);
         if (procs.length > 0) {
+            ns.tprint(`Killing scripts on ${s.server.hostname}`);
             for (const proc of procs) {
                 ns.kill(proc.pid)
             }
@@ -71,7 +71,7 @@ class ScannedServer {
         this.path = path;
         this.port = port;
     }
-
+    
     refreshServer(ns:NS) {
         this.server = ns.getServer(this.server.hostname);
     }
@@ -165,7 +165,6 @@ class ScannedServer {
         const pHack = "/payload/hack.ts";
         const target = this.server.hostname;
 
-        if (ns.fileExists(pWeaken,target) && ns.fileExists(pGrow,target) && ns.fileExists(pHack,target)) return true;
         if (!ns.fileExists(pWeaken,"home") || !ns.fileExists(pGrow,"home") || !ns.fileExists(pHack,"home")) return false;
         if (!ns.scp(pWeaken,target,"home") || !ns.scp(pGrow,target,"home") || !ns.scp(pHack,target,"home")) return false;
         return true;
@@ -214,36 +213,28 @@ class ScannedServer {
         this.refreshServer(ns)
         //If we don't have root, we should try to get root. If we do have root, then we should do all the root things.
 		if (!this.hasRoot(ns)) {
-            // ns.tprint(`No root on ${this.server.hostname}`)
             if (this.canRoot(ns)) {
-                // ns.tprint(`Can root on ${this.server.hostname}`)
 			    if (!this.getRoot(ns)) {
-                    // ns.tprint(`could not get root on ${this.server.hostname}`)
-                };
+                    return false;
+                }
             } else {
-                // ns.tprint(`Cannot root on ${this.server.hostname}`)
                 return false;
             }
         }
 
-        // ns.tprint(`Have root on ${this.server.hostname}`)
         if (!this.sendFiles(ns)) {
-            // ns.tprint(`Could not send files to ${this.server.hostname}` )
             return false;
             }
-        // ns.tprint(`Files sent/already present on ${this.server.hostname}`)
-        const currentAction = this.action(ns)
-        if (currentAction !== "Weakening..." && this.shouldWeaken(ns)) {
-            // ns.tprint(`Weakening ${this.server.hostname}`)
+        const currentAction = this.action(ns);
+        const doWeaken = this.shouldWeaken(ns);
+        const doGrow = this.shouldGrow(ns);
+        if (currentAction !== "Weakening..." && doWeaken) {
             return this.weakenSelf(ns);
-        } else if (currentAction !== "Growing..." && this.shouldGrow(ns)) {
-            // ns.tprint(`Growing ${this.server.hostname}`)
+        } else if (currentAction !== "Growing..." && !doWeaken && doGrow) {
             return this.growSelf(ns);
-        } else if (currentAction !== "Hacking..."){
-            // ns.tprint(`Hacking ${this.server.hostname}`)
+        } else if (currentAction !== "Hacking..." && !doWeaken && !doGrow){
             return this.hackSelf(ns);
         }
-        // ns.tprint(`Nothing to do on ${this.server.hostname}`)
         return true;
     }
 
@@ -323,12 +314,10 @@ function display(ns:NS,servers:ScannedServer[],startTime:number) {
         }
     }
 
-    const rootGroups = makeGroup(root);
-    const unrootGroups = makeGroup(unroot);
+    const rootGroups = makeGroup(root,6);
+    const unrootGroups = makeGroup(unroot,6);
 
-    // elapsed ms since script start
     const elapsedMs = Date.now() - startTime;
-    // switch groups every 2 seconds
     const tick = Math.floor(elapsedMs / 2000);
 
     const rGroupSel = rootGroups.length > 0 ? tick % rootGroups.length : 0;
@@ -353,12 +342,12 @@ function display(ns:NS,servers:ScannedServer[],startTime:number) {
     }
 }
 
-function makeGroup(servers:string[]):string[][] {
+function makeGroup(servers:string[],limit:number = 5):string[][] {
 	const fullGroup:string[][] = []
 	let group:string[] = []
 	let x = 0;
 	for (const s of servers) {
-		if (x >= 5) {
+		if (x >= limit) {
 			x = 0;
 			fullGroup.push(group);
 			group = [];
@@ -370,23 +359,35 @@ function makeGroup(servers:string[]):string[][] {
 	return fullGroup;
 }
 
+function bDoorWrite(ns:NS,servers:ScannedServer[]) {
+    if (!ns.fileExists("backdoors.txt")) ns.write("backdoors.txt");
+    let fileContent:string = ""
+    for (const server of servers) {
+        if (server.server.hostname === "home") continue;
+        if (!server.hasRoot(ns)) continue;
+        if (!server.server.backdoorInstalled === true) fileContent += `${server.path.join(";connect ")}; backdoor\n`
+    }
+    if (fileContent !== ns.read("backdoors.txt")) ns.write("backdoors.txt",fileContent,"w")
+}
+
 export async function main(ns:NS) {
     const startTime = Date.now()
-    initTail(ns,"Basic", 500, 500, 12)
+    initTail(ns,"Basic", 600, 500, 12)
     // ns.tprint("tail started")
     const servers = scan(ns,"home")
     // ns.tprint("servers created")
     // ns.tprint(`${servers.length} Servers`)
     while (true) {
-        ns.clearLog()
         // ns.tprint("beginning")
         for (const server of servers) {
             server.runSelf(ns)
         }
+        ns.clearLog()
         display(ns,servers,startTime)
         // ns.tprint("finishing")
         ns.ui.renderTail()
-        await ns.sleep(10)
+        bDoorWrite(ns,servers)
+        await ns.sleep(200)
     }
     // ns.tprint("something is wrong.")
 }
