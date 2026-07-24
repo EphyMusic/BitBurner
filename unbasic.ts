@@ -94,6 +94,11 @@ class ScannedServer {
         return false;
     }
 
+    shouldShare(ns:NS):boolean {
+        if (!this.server.moneyMax) return true;
+        return false;
+    }
+
     hasRoot(ns:NS):boolean {
         this.refreshServer(ns);
         return this.server.hasAdminRights;
@@ -154,6 +159,7 @@ class ScannedServer {
                 if (proc.filename.includes("weak")) output = "Weakening...";
                 else if (proc.filename.includes("grow")) output = "Growing...";
                 else if (proc.filename.includes("hack")) output = "Hacking...";
+                else if (proc.filename.includes("share")) output = "Sharing..."
             }
         }
         return output;
@@ -202,9 +208,16 @@ class ScannedServer {
     }
 
     hackSelf(ns:NS):boolean {
-        this.killOld(ns)
+        this.killOld(ns);
         const threads = this._calculateThreads(ns,"/payload/hack.ts");
         if (!ns.exec("/payload/hack.ts",this.server.hostname,threads)) return false;
+        return true;
+    }
+
+    shareSelf(ns:NS):boolean {
+        this.killOld(ns);
+        const threads = this._calculateThreads(ns,"/payload/share.ts");
+        if (!ns.exec("/payload/share.ts", this.server.hostname,threads)) return false;
         return true;
     }
 
@@ -228,12 +241,15 @@ class ScannedServer {
         const currentAction = this.action(ns);
         const doWeaken = this.shouldWeaken(ns);
         const doGrow = this.shouldGrow(ns);
-        if (currentAction !== "Weakening..." && doWeaken) {
+        const doShare = this.shouldShare(ns);
+        if (currentAction !== "Weakening..." && !doShare && doWeaken) {
             return this.weakenSelf(ns);
-        } else if (currentAction !== "Growing..." && !doWeaken && doGrow) {
+        } else if (currentAction !== "Growing..." && !doShare && !doWeaken && doGrow) {
             return this.growSelf(ns);
-        } else if (currentAction !== "Hacking..." && !doWeaken && !doGrow){
+        } else if (currentAction !== "Hacking..." && !doShare && !doWeaken && !doGrow){
             return this.hackSelf(ns);
+        } else if (currentAction !== "Sharing..." && doShare) {
+            return this.shareSelf(ns)
         }
         return true;
     }
@@ -245,7 +261,7 @@ class ScannedServer {
         let maxMoney:number
         let currMoney:number
         let name = this.server.hostname
-        if (name.length >= 6) name = name.slice(0,6) + "...";
+        if (name.length > 8) name = name.slice(0,6) + "...";
 
         output += `[${name}]: `
         if (this.hasRoot(ns)) {
@@ -314,8 +330,8 @@ function display(ns:NS,servers:ScannedServer[],startTime:number) {
         }
     }
 
-    const rootGroups = makeGroup(root,6);
-    const unrootGroups = makeGroup(unroot,6);
+    const rootGroups = makeGroup(root,10);
+    const unrootGroups = makeGroup(unroot,10);
 
     const elapsedMs = Date.now() - startTime;
     const tick = Math.floor(elapsedMs / 2000);
@@ -355,8 +371,15 @@ function makeGroup(servers:string[],limit:number = 5):string[][] {
 		group.push(s);
 		x += 1;
 	}
+    if (group.length < limit) {
+        while (group.length < limit) group.push("");
+    }
 	fullGroup.push(group);
 	return fullGroup;
+}
+
+function formatGroups(server:string[][],root:boolean) {
+    
 }
 
 function bDoorWrite(ns:NS,servers:ScannedServer[]) {
@@ -373,21 +396,15 @@ function bDoorWrite(ns:NS,servers:ScannedServer[]) {
 export async function main(ns:NS) {
     const startTime = Date.now()
     initTail(ns,"Basic", 600, 500, 12)
-    // ns.tprint("tail started")
     const servers = scan(ns,"home")
-    // ns.tprint("servers created")
-    // ns.tprint(`${servers.length} Servers`)
     while (true) {
-        // ns.tprint("beginning")
         for (const server of servers) {
             server.runSelf(ns)
         }
         ns.clearLog()
         display(ns,servers,startTime)
-        // ns.tprint("finishing")
         ns.ui.renderTail()
         bDoorWrite(ns,servers)
         await ns.sleep(200)
     }
-    // ns.tprint("something is wrong.")
 }
