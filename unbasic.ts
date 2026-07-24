@@ -95,7 +95,7 @@ class ScannedServer {
     }
 
     shouldShare(ns:NS):boolean {
-        if (!this.server.moneyMax) return true;
+        if (!this.server.moneyMax || this.server.moneyMax == 0) return true;
         return false;
     }
 
@@ -166,13 +166,18 @@ class ScannedServer {
     }
 
     sendFiles(ns:NS):boolean {
-        const pWeaken = "/payload/weaken.ts";
-        const pGrow = "/payload/grow.ts";
-        const pHack = "/payload/hack.ts";
+        const files = [
+            "/payload/weaken.ts",
+            "/payload/grow.ts",
+            "/payload/hack.ts",
+            "/payload/share.ts"
+        ]
         const target = this.server.hostname;
 
-        if (!ns.fileExists(pWeaken,"home") || !ns.fileExists(pGrow,"home") || !ns.fileExists(pHack,"home")) return false;
-        if (!ns.scp(pWeaken,target,"home") || !ns.scp(pGrow,target,"home") || !ns.scp(pHack,target,"home")) return false;
+        for (const file of files) {
+            if (!ns.fileExists(file,"home")) return false;
+            if (!ns.scp(file,target,"home")) return false;
+        }
         return true;
     }
 
@@ -318,7 +323,7 @@ function scan(ns: NS, start = "home"): ScannedServer[] {
 	return servers;
 }
 
-function display(ns:NS,servers:ScannedServer[],startTime:number) {
+function display(ns:NS,servers:ScannedServer[],startTime:number,groupChangeInterval:number) {
     const root:string[] = [];
     const unroot:string[] = [];
 
@@ -334,7 +339,7 @@ function display(ns:NS,servers:ScannedServer[],startTime:number) {
     const unrootGroups = makeGroup(unroot,10);
 
     const elapsedMs = Date.now() - startTime;
-    const tick = Math.floor(elapsedMs / 2000);
+    const tick = Math.floor(elapsedMs / (groupChangeInterval * 1000));
 
     const rGroupSel = rootGroups.length > 0 ? tick % rootGroups.length : 0;
     const unGroupSel = unrootGroups.length > 0 ? tick % unrootGroups.length : 0;
@@ -402,7 +407,7 @@ export async function main(ns:NS) {
             server.runSelf(ns)
         }
         ns.clearLog()
-        display(ns,servers,startTime)
+        display(ns,servers,startTime,5)
         ns.ui.renderTail()
         bDoorWrite(ns,servers)
         await ns.sleep(200)
