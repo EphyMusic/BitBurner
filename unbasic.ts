@@ -207,8 +207,10 @@ class ScannedServer {
         const maxMoney = this.server.moneyMax ?? 0;
         const currMoney = this.server.moneyAvailable ?? 0;
         const moneyThresh = maxMoney/10;
-        if (minSec === 0 || currSec === 0 || maxMoney === 0 || currMoney === 0) return "SHARE";
         const currentAction = this.action(ns);
+        if (minSec === 0 || currSec === 0 || maxMoney === 0 || currMoney === 0) {
+            if (currentAction !== "Sharing") return "SHARE";
+        }
 
         switch (true) {
             case currentAction === "Weakening":
