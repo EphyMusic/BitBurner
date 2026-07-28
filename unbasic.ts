@@ -65,6 +65,7 @@ class ScannedServer {
     server: Server;
     path: string[];
     port: number;
+    actionQueued: boolean = false;
 
     constructor(ns:NS,name:string,path:string[],port:number) {
         this.server = ns.getServer(name);
@@ -75,42 +76,20 @@ class ScannedServer {
     refreshServer(ns:NS) {
         this.server = ns.getServer(this.server.hostname);
     }
-
-    shouldWeaken(ns:NS):boolean {
-        this.refreshServer(ns)
-        const minSec = this.server.minDifficulty ?? 0;
-        const currSec = this.server.hackDifficulty ?? 0;
-        if (minSec === 0) return false;
-        if (currSec > (minSec * 0.2) + minSec) return true;
-        return false;
-    }
-
-    shouldGrow(ns:NS):boolean {
-        this.refreshServer(ns)
-        const maxMoney = this.server.moneyMax ?? 0;
-        const currMoney = this.server.moneyAvailable?? 0;
-        if (maxMoney === 0) return false;
-        if (currMoney < maxMoney / 10) return true;
-        return false;
-    }
-
-    shouldShare(ns:NS):boolean {
-        if (!this.server.moneyMax || this.server.moneyMax == 0) return true;
-        return false;
-    }
-
+    
+    
     hasRoot(ns:NS):boolean {
         this.refreshServer(ns);
         return this.server.hasAdminRights;
     }
-
+    
     canRoot(ns:NS):boolean {
         this.refreshServer(ns)
         const reqHack = this.server.requiredHackingSkill ?? 0;
         if (reqHack <= ns.getHackingLevel()) return true;
         return false
     }
-
+    
 	getRoot(ns:NS):boolean {
         if (!this.canRoot(ns)) return false;
         const reqPorts = this.server.numOpenPortsRequired ?? 0
@@ -119,7 +98,7 @@ class ScannedServer {
         }
 		return false;
 	}
-
+    
     _crackPorts(ns:NS):number {
         const actions = [
             ns.brutessh,
@@ -135,7 +114,7 @@ class ScannedServer {
         }
         return openPorts;
     }
-
+    
 	_numPortsCanOpen(ns:NS):number {
         let possible:number = 0;
         const progs = [
@@ -150,21 +129,21 @@ class ScannedServer {
         }
 		return possible;
 	}
-
+    
     action(ns:NS):string {
         let output = "Waiting...";
         const procs = ns.ps(this.server.hostname)
         if (procs.length > 0) {
             for (const proc of procs) {
-                if (proc.filename.includes("weak")) output = "Weakening...";
-                else if (proc.filename.includes("grow")) output = "Growing...";
-                else if (proc.filename.includes("hack")) output = "Hacking...";
-                else if (proc.filename.includes("share")) output = "Sharing..."
+                if (proc.filename.includes("weak")) output = "Weakening";
+                else if (proc.filename.includes("grow")) output = "Growing";
+                else if (proc.filename.includes("hack")) output = "Hacking";
+                else if (proc.filename.includes("share")) output = "Sharing"
             }
         }
         return output;
     }
-
+    
     sendFiles(ns:NS):boolean {
         const files = [
             "/payload/weaken.ts",
@@ -173,63 +152,104 @@ class ScannedServer {
             "/payload/share.ts"
         ]
         const target = this.server.hostname;
-
+        
         for (const file of files) {
             if (!ns.fileExists(file,"home")) return false;
             if (!ns.scp(file,target,"home")) return false;
         }
         return true;
     }
-
+    
     _calculateThreads(ns:NS,script:string):number {
         this.refreshServer(ns);
         const freeRam = this.server.maxRam - this.server.ramUsed;
         const scriptRam = ns.getScriptRam(script);
         return Math.max(0,Math.floor(freeRam / scriptRam));
     }
-
-    killOld(ns:NS) {
+    
+    sendKillCommand(ns:NS):boolean {
         const old = ns.ps(this.server.hostname);
         if (old.length > 0) {
-            for (const proc of old) {
-                ns.kill(proc.pid);
-            }
+            const port = ns.getPortHandle(this.port)
+            if (!port.full() && port.peek() !== "KILL") port.write("KILL")
+            return true;
         }
+        return false;
     }
     
-    weakenSelf(ns:NS):boolean {
-        this.killOld(ns)
-        const threads = this._calculateThreads(ns,"/payload/weaken.ts")
-        if (!ns.exec("/payload/weaken.ts",this.server.hostname,threads)) return false;
-        return true;
+    // shouldWeaken(ns:NS):boolean {
+    //     this.refreshServer(ns)
+    //     const minSec = this.server.minDifficulty ?? 0;
+    //     const currSec = this.server.hackDifficulty ?? 0;
+    //     if (minSec === 0) return false;
+    //     if (currSec > (minSec * 0.2) + minSec) return true;
+    //     return false;
+    // }
+
+    // shouldGrow(ns:NS):boolean {
+    //     this.refreshServer(ns)
+    //     const maxMoney = this.server.moneyMax ?? 0;
+    //     const currMoney = this.server.moneyAvailable?? 0;
+    //     if (maxMoney === 0) return false;
+    //     if (currMoney < maxMoney / 10) return true;
+    //     return false;
+    // }
+
+    // shouldShare(ns:NS):boolean {
+    //     if (!this.server.moneyMax || this.server.moneyMax == 0) return true;
+    //     return false;
+    // }
+
+    shouldAction(ns:NS):string {
+        const minSec = this.server.minDifficulty ?? 0;
+        const currSec = this.server.hackDifficulty ?? 0;
+        const secTresh = minSec * 1.2;
+        const maxMoney = this.server.moneyMax ?? 0;
+        const currMoney = this.server.moneyAvailable ?? 0;
+        const moneyThresh = maxMoney/10;
+        if (minSec === 0 || currSec === 0 || maxMoney === 0 || currMoney === 0) return "SHARE";
+        const currentAction = this.action(ns);
+
+        switch (true) {
+            case currentAction === "Weakening":
+                if (currSec !== minSec) return "N/A";
+                break;
+
+            case currentAction === "Growing" || currentAction === "Hacking":
+                if (currSec > secTresh) return "WEAK";
+                if (currMoney !== maxMoney) return "N/A"
+                break;
+
+            case currentAction === "Sharing":
+                return "N/A";
+            
+            default:
+                break;
+        }
+
+        switch (true) {
+            case currSec > secTresh:
+                return "WEAK";
+
+            case currMoney < moneyThresh:
+                return "GROW";
+            
+            default:
+                return "HACK";
+        }
     }
 
-    growSelf(ns:NS):boolean {
-        this.killOld(ns)
-        const threads = this._calculateThreads(ns,"/payload/grow.ts");
-        if (!ns.exec("/payload/grow.ts", this.server.hostname,threads)) return false;
-        return true;
-
-    }
-
-    hackSelf(ns:NS):boolean {
-        this.killOld(ns);
-        const threads = this._calculateThreads(ns,"/payload/hack.ts");
-        if (!ns.exec("/payload/hack.ts",this.server.hostname,threads)) return false;
+    doAction(ns:NS,payload:string):boolean {
+        if (this.sendKillCommand(ns)) return false;
+        const threads = this._calculateThreads(ns,payload)
+        if (!ns.exec(payload,this.server.hostname,threads,this.port)) return false;
         return true;
     }
-
-    shareSelf(ns:NS):boolean {
-        this.killOld(ns);
-        const threads = this._calculateThreads(ns,"/payload/share.ts");
-        if (!ns.exec("/payload/share.ts", this.server.hostname,threads)) return false;
-        return true;
-    }
-
+    
     runSelf(ns:NS):boolean {
         if (this.server.hostname === "home") return false;
         this.refreshServer(ns)
-        //If we don't have root, we should try to get root. If we do have root, then we should do all the root things.
+
 		if (!this.hasRoot(ns)) {
             if (this.canRoot(ns)) {
 			    if (!this.getRoot(ns)) {
@@ -242,21 +262,41 @@ class ScannedServer {
 
         if (!this.sendFiles(ns)) {
             return false;
-            }
-        const currentAction = this.action(ns);
-        const doWeaken = this.shouldWeaken(ns);
-        const doGrow = this.shouldGrow(ns);
-        const doShare = this.shouldShare(ns);
-        if (currentAction !== "Weakening..." && !doShare && doWeaken) {
-            return this.weakenSelf(ns);
-        } else if (currentAction !== "Growing..." && !doShare && !doWeaken && doGrow) {
-            return this.growSelf(ns);
-        } else if (currentAction !== "Hacking..." && !doShare && !doWeaken && !doGrow){
-            return this.hackSelf(ns);
-        } else if (currentAction !== "Sharing..." && doShare) {
-            return this.shareSelf(ns)
         }
-        return true;
+
+        const shouldDo = this.shouldAction(ns);
+        // const doWeaken = this.shouldWeaken(ns);
+        // const doGrow = this.shouldGrow(ns);
+        // const doShare = this.shouldShare(ns);
+
+        switch (true) {
+
+            case shouldDo === "WEAK":
+                return this.doAction(ns,"/payload/weaken.ts");
+
+            case shouldDo === "GROW":
+                return this.doAction(ns,"/payload/grow.ts");
+
+            case shouldDo === "HACK":
+                return this.doAction(ns,"/payload/hack.ts");
+
+            case shouldDo === "SHARE":
+                return this.doAction(ns,"/payload/share.ts");
+
+            default:
+                return false;
+        }
+
+        // if (currentAction !== "Weakening" && !doShare && doWeaken) {
+        //     return this.doAction(ns,"/payload/weaken.ts");
+        // } else if (currentAction !== "Growing" && !doShare && !doWeaken && doGrow) {
+        //     return this.doAction(ns,"/payload/grow.ts");
+        // } else if (currentAction !== "Hacking" && !doShare && !doWeaken && !doGrow){
+        //     return this.doAction(ns,"/payload/hack.ts");
+        // } else if (currentAction !== "Sharing" && doShare) {
+        //     return this.doAction(ns,"/payload/share.ts");
+        // }
+        // return true;
     }
 
     display(ns:NS):string {
@@ -266,7 +306,7 @@ class ScannedServer {
         let maxMoney:number
         let currMoney:number
         let name = this.server.hostname
-        if (name.length > 8) name = name.slice(0,6) + "...";
+        if (name.length > 8) name = name.slice(0,5) + "...";
 
         output += `[${name}]: `
         if (this.hasRoot(ns)) {
@@ -313,17 +353,36 @@ function scan(ns: NS, start = "home"): ScannedServer[] {
 	dfs(start);
 
 	const servers: ScannedServer[] = [];
-    let port = 0
+    let port = 1
 	for (const s of visited.keys()) {
 		const entry = visited.get(s)!;
         if (entry.sName == "home") continue;
+        if (ns.getServer(entry.sName).isOnline !== undefined) continue;
 		servers.push(new ScannedServer(ns,entry.sName,entry.path,port))
         port ++
 	}
 	return servers;
 }
 
-function display(ns:NS,servers:ScannedServer[],startTime:number,groupChangeInterval:number) {
+function constructSpinner(seed = Math.random()) {
+        const spinners = [
+        [`◴`, `◷`, `◶`, `◵`],
+        [`▁`,`▂`,`▃`,`▄`,`▅`,`▆`,`▇`,`█`,`▇`,`▆`,`▅`,`▄`,`▃`,`▁`],
+        [`▉`,`▊`,`▋`,`▌`,`▍`,`▎`,`▏`,`▎`,`▍`,`▌`,`▋`,`▊`,`▉`],
+        [`⣾`,`⣽`,`⣻`,`⢿`,`⡿`,`⣟`,`⣯`,`⣷`],
+        [`⠁`,`⠂`,`⠄`,`⡀`,`⢀`,`⠠`,`⠐`,`⠈`,`⠈`,`⠐`,`⠠`,`⢀`,`⡀`,`⠄`,`⠂`,`⠁`],
+        [`┤`,`┘`,`┴`,`└`,`├`,`┌`,`┬`,`┐`],
+        [`▖`,`▘`,`▝`,`▗`],
+        [`◢`,`◣`,`◤`,`◥`],
+        [`◰`,`◳`,`◲`,`◱`],
+        [`◐`,`◓`,`◑`,`◒`]
+    ]
+    const s = Math.max(0, Math.min(0.999999, Number(seed) || 0));
+    const idx = Math.floor(s * spinners.length);
+    return spinners[idx];
+}
+
+function display(ns:NS,servers:ScannedServer[],startTime:number,groupChangeInterval:number,spinner:string[]) {
     const root:string[] = [];
     const unroot:string[] = [];
 
@@ -393,21 +452,22 @@ function bDoorWrite(ns:NS,servers:ScannedServer[]) {
     for (const server of servers) {
         if (server.server.hostname === "home") continue;
         if (!server.hasRoot(ns)) continue;
-        if (!server.server.backdoorInstalled === true) fileContent += `${server.path.join(";connect ")}; backdoor\n`
+        if (!server.server.backdoorInstalled) fileContent += `${server.path.join(";connect ")}; backdoor\n`
     }
     if (fileContent !== ns.read("backdoors.txt")) ns.write("backdoors.txt",fileContent,"w")
 }
 
 export async function main(ns:NS) {
     const startTime = Date.now()
-    initTail(ns,"Basic", 600, 500, 12)
+    initTail(ns,"unBasic", 600, 500, 12)
     const servers = scan(ns,"home")
     while (true) {
         for (const server of servers) {
             server.runSelf(ns)
         }
         ns.clearLog()
-        display(ns,servers,startTime,5)
+        const spinner:string[] = constructSpinner()
+        display(ns,servers,startTime,5,spinner)
         ns.ui.renderTail()
         bDoorWrite(ns,servers)
         await ns.sleep(200)
