@@ -167,12 +167,12 @@ class ScannedServer {
         return Math.max(0,Math.floor(freeRam / scriptRam));
     }
     
-    sendKillCommand(ns:NS):boolean {
+    killOld(ns:NS):boolean {
         const old = ns.ps(this.server.hostname);
         if (old.length > 0) {
-            const port = ns.getPortHandle(this.port)
-            if (!port.full() && port.peek() !== "KILL") port.write("KILL")
-            return true;
+            for (const proc of old) {
+                return ns.kill(proc.pid);
+            }
         }
         return false;
     }
@@ -240,7 +240,7 @@ class ScannedServer {
     }
 
     doAction(ns:NS,payload:string):boolean {
-        if (this.sendKillCommand(ns)) return false;
+        if (this.killOld(ns)) return false;
         const threads = this._calculateThreads(ns,payload)
         if (!ns.exec(payload,this.server.hostname,threads,this.port)) return false;
         return true;
