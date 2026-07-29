@@ -217,11 +217,16 @@ class ScannedServer {
                 if (currSec !== minSec) return "N/A";
                 break;
 
-            case currentAction === "Growing" || currentAction === "Hacking":
+            case currentAction === "Growing":
                 if (currSec > secTresh) return "WEAK";
-                if (currMoney !== maxMoney) return "N/A"
+                if (currMoney !== maxMoney) return "N/A";
                 break;
 
+            case currentAction === "Hacking":
+                if (currSec > secTresh) return "WEAK";
+                if (currMoney < moneyThresh) return "GROW";
+                return "N/A";
+                
             case currentAction === "Sharing":
                 return "N/A";
             
@@ -243,7 +248,8 @@ class ScannedServer {
 
     doAction(ns:NS,payload:string):boolean {
         if (this.killOld(ns)) return false;
-        const threads = this._calculateThreads(ns,payload)
+        const threads = this._calculateThreads(ns,payload);
+        if (!isFinite(threads) || threads === 0) return false;
         if (!ns.exec(payload,this.server.hostname,threads,this.port)) return false;
         return true;
     }
