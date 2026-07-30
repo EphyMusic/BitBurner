@@ -176,29 +176,6 @@ class ScannedServer {
         }
         return false;
     }
-    
-    // shouldWeaken(ns:NS):boolean {
-    //     this.refreshServer(ns)
-    //     const minSec = this.server.minDifficulty ?? 0;
-    //     const currSec = this.server.hackDifficulty ?? 0;
-    //     if (minSec === 0) return false;
-    //     if (currSec > (minSec * 0.2) + minSec) return true;
-    //     return false;
-    // }
-
-    // shouldGrow(ns:NS):boolean {
-    //     this.refreshServer(ns)
-    //     const maxMoney = this.server.moneyMax ?? 0;
-    //     const currMoney = this.server.moneyAvailable?? 0;
-    //     if (maxMoney === 0) return false;
-    //     if (currMoney < maxMoney / 10) return true;
-    //     return false;
-    // }
-
-    // shouldShare(ns:NS):boolean {
-    //     if (!this.server.moneyMax || this.server.moneyMax == 0) return true;
-    //     return false;
-    // }
 
     shouldAction(ns:NS):string {
         const minSec = this.server.minDifficulty ?? 0;
@@ -235,12 +212,26 @@ class ScannedServer {
         }
     }
 
+    sendInfo(ns:NS): boolean {
+        const port = ns.getPortHandle(this.port)
+        const threshSec = (this.server.minDifficulty as number) * 1.2;
+        const currSec = (this.server.hackDifficulty as number);
+        const currMoney = this.server.moneyAvailable as number;
+        const maxMoney = this.server.moneyMax as number;
+        const threshMoney = (this.server.moneyMax as number) / 10;
+        const minSec = this.server.minDifficulty as number;
+        const info = [threshSec,currSec,currMoney,maxMoney,threshMoney,minSec].join(" ")
+        
+        if (port.peek() !== info) port.write(info);
+        return true;
+    }
+
     doAction(ns:NS,payload:string):boolean {
         if (ns.ps(this.server.hostname).length > 0 && !this.killOld(ns)) return false;
         const threads = this._calculateThreads(ns,payload);
         if (!isFinite(threads) || threads === 0) return false;
-        const t = this.server.hostname
-        if (!ns.exec(payload,t,threads,t)) return false;
+        const t = this.server.hostname;
+        if (!ns.exec(payload,t,threads,this.port)) return false;
         return true;
     }
     
@@ -263,9 +254,8 @@ class ScannedServer {
         }
 
         const shouldDo = this.shouldAction(ns);
-        // const doWeaken = this.shouldWeaken(ns);
-        // const doGrow = this.shouldGrow(ns);
-        // const doShare = this.shouldShare(ns);
+        ns.tprint(this.server.hostname,this.action(ns),shouldDo);
+        ns.exit()
 
         switch (true) {
 
@@ -281,20 +271,12 @@ class ScannedServer {
             case shouldDo === "SHARE":
                 return this.doAction(ns,"/payload/share.ts");
 
+            case shouldDo.includes("SEND"):
+                return this.sendInfo(ns)
+
             default:
                 return false;
         }
-
-        // if (currentAction !== "Weakening" && !doShare && doWeaken) {
-        //     return this.doAction(ns,"/payload/weaken.ts");
-        // } else if (currentAction !== "Growing" && !doShare && !doWeaken && doGrow) {
-        //     return this.doAction(ns,"/payload/grow.ts");
-        // } else if (currentAction !== "Hacking" && !doShare && !doWeaken && !doGrow){
-        //     return this.doAction(ns,"/payload/hack.ts");
-        // } else if (currentAction !== "Sharing" && doShare) {
-        //     return this.doAction(ns,"/payload/share.ts");
-        // }
-        // return true;
     }
 
     display(ns:NS):string {
