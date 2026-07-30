@@ -79,12 +79,10 @@ class ScannedServer {
     
     
     hasRoot(ns:NS):boolean {
-        this.refreshServer(ns);
         return this.server.hasAdminRights;
     }
     
     canRoot(ns:NS):boolean {
-        this.refreshServer(ns)
         const reqHack = this.server.requiredHackingSkill ?? 0;
         if (reqHack <= ns.getHackingLevel()) return true;
         return false
@@ -161,7 +159,6 @@ class ScannedServer {
     }
     
     _calculateThreads(ns:NS,script:string):number {
-        this.refreshServer(ns);
         const freeRam = this.server.maxRam - this.server.ramUsed;
         const scriptRam = ns.getScriptRam(script);
         return Math.max(0,Math.floor(freeRam / scriptRam));
