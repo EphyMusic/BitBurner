@@ -257,8 +257,6 @@ class ScannedServer {
         }
 
         const shouldDo = this.shouldAction(ns);
-        ns.tprint(this.server.hostname,this.action(ns),shouldDo);
-        ns.exit()
 
         switch (true) {
 
