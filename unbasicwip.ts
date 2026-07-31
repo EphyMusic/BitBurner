@@ -213,6 +213,7 @@ class ScannedServer {
             default:
                 return "HACK";
         }
+        return "N/A"
     }
 
     sendInfo(ns:NS): boolean {
