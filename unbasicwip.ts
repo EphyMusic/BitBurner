@@ -1,4 +1,4 @@
-//import {NS,Server} from "@ns"
+// import {NS,Server} from "@ns"
 
 //Color utils
 export function colorize(text: string, r: number, g: number, b: number) {
@@ -186,7 +186,10 @@ class ScannedServer {
             if (currentAction !== "Sharing") return "SHARE";
         }
 
-        switch(currentAction !== "Waiting") {
+        switch(true) {
+            case currentAction === "Waiting":
+                break;
+
             case currentAction === "Hacking":
                 return "SEND_H";
             
@@ -197,7 +200,10 @@ class ScannedServer {
                 return "SEND_G";
         }
 
-        switch (currentAction === "Waiting") {
+        switch (true) {
+            case currentAction !== "Waiting":
+                break;
+
             case currSec > secTresh:
                 return "WEAK";
 
