@@ -1,4 +1,4 @@
-// import {NS,Server} from "@ns"
+import {NS,Server} from "@ns"
 
 //Color utils
 export function colorize(text: string, r: number, g: number, b: number) {
@@ -258,24 +258,16 @@ class ScannedServer {
         }
 
         const shouldDo = this.shouldAction(ns);
-
-        switch (true) {
-
-            case shouldDo === "WEAK":
-                return this.doAction(ns,"/payload/weaken.ts");
-
-            case shouldDo === "GROW":
-                return this.doAction(ns,"/payload/grow.ts");
-
-            case shouldDo === "HACK":
-                return this.doAction(ns,"/payload/hack.ts");
-
-            case shouldDo === "SHARE":
-                return this.doAction(ns,"/payload/share.ts");
-
-            case shouldDo.includes("SEND"):
+        switch (shouldDo) {
+            case "WEAK": return this.doAction(ns,"/payload/weaken.ts");
+            case "GROW": return this.doAction(ns,"/payload/grow.ts");
+            case "HACK": return this.doAction(ns,"/payload/hack.ts");
+            case "SHARE": return this.doAction(ns,"/payload/share.ts");
+            case "SEND_H":
+            case "SEND_G":
+            case "SEND_W":
                 return this.sendInfo(ns)
-
+            case "N/A":
             default:
                 return false;
         }
