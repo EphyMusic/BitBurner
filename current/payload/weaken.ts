@@ -15,6 +15,6 @@ export async function main(ns:NS) {
             await ns.weaken();
         }
     } else {
-        while (true) await ns.weaken()
+        while (true) await ns.weaken();
     }
 }

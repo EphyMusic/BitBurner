@@ -17,6 +17,6 @@ export async function main(ns:NS) {
             await ns.grow();
         }
     } else {
-        while (true) await ns.grow()
+        while (true) await ns.grow();
     }
 }

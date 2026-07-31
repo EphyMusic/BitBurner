@@ -17,6 +17,6 @@ export async function main(ns:NS) {
             await ns.hack();
         }
     } else {
-        while (true) await ns.hack()
+        while (true) await ns.hack();
     }
 }
