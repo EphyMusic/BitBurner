@@ -224,7 +224,7 @@ class ScannedServer {
         const maxMoney = this.server.moneyMax as number;
         const threshMoney = (this.server.moneyMax as number) / 10;
         const minSec = this.server.minDifficulty as number;
-        const info = [threshSec,currSec,currMoney,maxMoney,threshMoney,minSec].join(" ")
+        const info = [threshSec,currSec,minSec,currMoney,maxMoney,threshMoney];
         
         if (port.peek() !== info) port.write(info);
         return true;
