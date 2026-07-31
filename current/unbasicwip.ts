@@ -1,4 +1,4 @@
-import {NS,Server} from "@ns"
+//import {NS,Server} from "@ns"
 
 //Color utils
 export function colorize(text: string, r: number, g: number, b: number) {
@@ -136,7 +136,7 @@ class ScannedServer {
                 if (proc.filename.includes("weak")) output = "Weakening";
                 else if (proc.filename.includes("grow")) output = "Growing";
                 else if (proc.filename.includes("hack")) output = "Hacking";
-                else if (proc.filename.includes("share")) output = "Sharing"
+                else if (proc.filename.includes("share")) output = "Sharing";
             }
         }
         return output;
