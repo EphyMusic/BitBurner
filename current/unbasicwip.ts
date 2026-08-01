@@ -1,4 +1,4 @@
-//import {NS,Server} from "@ns"
+// import {NS,Server} from "@ns"
 
 //Color utils
 export function colorize(text: string, r: number, g: number, b: number) {
@@ -30,6 +30,13 @@ function rgbToAnsiFg(r: number, g: number, b: number) {
 function rgbToAnsiBg(r: number, g: number, b: number) {
     return ANSI.bgRgb(clampByte(r), clampByte(g), clampByte(b));
 }
+
+type SpinnerInfo = {
+    spinner:string[]
+    r:number
+    g:number
+    b:number
+    }
 
 // Startup and Shutdown
 export async function initTail(ns: NS,title: string,width: number,height: number,fontSize: number) {
@@ -65,7 +72,7 @@ class ScannedServer {
     server: Server;
     path: string[];
     port: number;
-    actionQueued: boolean = false;
+    timeActive:number = 0
 
     constructor(ns:NS,name:string,path:string[],port:number) {
         this.server = ns.getServer(name);
@@ -273,7 +280,7 @@ class ScannedServer {
         }
     }
 
-    display(ns:NS):string {
+    output(ns:NS):string {
         let output:string = ""
         let currSec:number
         let minSec:number
@@ -356,28 +363,29 @@ function constructSpinner(seed = Math.random()) {
     return spinners[idx];
 }
 
-function display(ns:NS,servers:ScannedServer[],startTime:number,groupChangeInterval:number,spinner:string[]) {
+function display(ns:NS,servers:ScannedServer[],groupChangeInterval:number,spinner:SpinnerInfo) {
+    const sprite:string[] = spinner.spinner
     const root:string[] = [];
     const unroot:string[] = [];
 
     for (const server of servers) {
         if (server.hasRoot(ns)) {
-            root.push(server.display(ns));
+            root.push(server.output(ns));
         } else {
-            unroot.push(server.display(ns));
+            unroot.push(server.output(ns));
         }
     }
 
     const rootGroups = makeGroup(root,10);
     const unrootGroups = makeGroup(unroot,10);
-
-    const elapsedMs = Date.now() - startTime;
+    const elapsedMs = servers[0]?.timeActive ?? 0;
     const tick = Math.floor(elapsedMs / (groupChangeInterval * 1000));
 
-    const rGroupSel = rootGroups.length > 0 ? tick % rootGroups.length : 0;
-    const unGroupSel = unrootGroups.length > 0 ? tick % unrootGroups.length : 0;
+    const frame = sprite.length > 0 ? Math.floor(elapsedMs % sprite.length) : 0;
+    const rGroupSel = rootGroups.length > 0 ? Math.floor(tick % rootGroups.length) : 0;
+    const unGroupSel = unrootGroups.length > 0 ? Math.floor(tick % unrootGroups.length) : 0;
 
-    ns.print("Root");
+    ns.print(`${colorize(sprite[frame],spinner.r,spinner.g,spinner.b)}\nRoot`);
     if (rootGroups.length > 0) {
         for (const s of rootGroups[rGroupSel]) {
             ns.print(`${s}\n`);
@@ -432,18 +440,28 @@ function bDoorWrite(ns:NS,servers:ScannedServer[]) {
 }
 
 export async function main(ns:NS) {
-    const startTime = Date.now()
-    initTail(ns,"unBasic", 600, 500, 12)
-    const servers = scan(ns,"home")
+    initTail(ns,"unBasic", 600, 500, 12);
+    const servers = scan(ns,"home");
+    const groupChangeInterval = 5;
+    const spinner:SpinnerInfo = {spinner: constructSpinner(),r:15,g:255,b:255};
+    const clockServer = servers[0];
+    let lastTimeSource = Date.now();
     while (true) {
-        for (const server of servers) {
-            server.runSelf(ns)
+        const now = Date.now();
+        const dt = now - lastTimeSource;
+        lastTimeSource = now;
+
+        if (clockServer) {
+            clockServer.timeActive += dt;
         }
-        ns.clearLog()
-        const spinner:string[] = constructSpinner()
-        display(ns,servers,startTime,5,spinner)
-        ns.ui.renderTail()
-        bDoorWrite(ns,servers)
-        await ns.sleep(200)
+
+        for (const server of servers) {
+            server.runSelf(ns);
+        }
+        ns.clearLog();
+        display(ns,servers,groupChangeInterval,spinner);
+        ns.ui.renderTail();
+        bDoorWrite(ns,servers);
+        await ns.sleep(200);
     }
 }
