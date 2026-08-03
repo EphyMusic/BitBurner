@@ -46,7 +46,7 @@ export class ScannedServer {
     }
 
     updateColorAndMetrics(ns: NS,dt:number) {
-        if (!(this.timer <= 0)) this.timer += -dt;
+        if (!(this.timer <= 0)) Math.max(0,this.timer += -dt);
         else {
             const action = this.action(ns);
             const inPort = ns.getPortHandle(this.inPort)
@@ -367,7 +367,7 @@ export class ScannedServer {
             else if (actionTime.includes("minute")) actionTime = actionTime.replace("inute","");
             if (actionTime.includes("seconds")) actionTime = actionTime.replace("econds","");
             else if (actionTime.includes("second")) actionTime = actionTime.replace("econd","s");
-            actionTime = actionTime.replaceAll(" ", "");
+            actionTime = actionTime.replaceAll(" ", "")
             output += colorize(`${this.action(ns)} ${actionTime}`, this.actColor.r, this.actColor.g, this.actColor.b)
 
         } else {
