@@ -9,37 +9,6 @@ type SpinnerInfo = {
     b: number
 }
 
-function scan(ns: NS, start = "home"): ScannedServer[] {
-    const visited = new Map<string, { sName: string; path: string[] }>();
-
-    function dfs(host: string, path: string[] = []) {
-        const fullPath = [...path, host];
-        visited.set(host, { sName: host, path: fullPath });
-
-        for (const next of ns.scan(host)) {
-            if (!visited.has(next)) {
-                dfs(next, fullPath);
-            }
-        }
-    }
-
-    dfs(start);
-
-    const servers: ScannedServer[] = [];
-    let port = 1
-    for (const s of visited.keys()) {
-        const entry = visited.get(s)!;
-        if (entry.sName == "home") continue;
-        if (ns.getServer(entry.sName).isOnline !== undefined) continue;
-        servers.push(new ScannedServer(ns, entry.sName, entry.path, port,));
-        port += 2;
-    }
-    // for (const c of ns.cloud.getServerNames()) {
-    //     servers.push(new ScannedServer(ns,c,["home",c],port))
-    //     port++;
-    // }
-    return servers;
-}
 
 function constructSpinner(seed = Math.random()) {
     const spinners = [
@@ -124,17 +93,80 @@ function formatGroups(server: string[][], root: boolean) {
 
 }
 
+function scan(ns: NS, start = "home"): ScannedServer[] {
+    const visited = new Map<string, { sName: string; path: string[] }>();
+
+    function dfs(host: string, path: string[] = []) {
+        const fullPath = [...path, host];
+        visited.set(host, { sName: host, path: fullPath });
+
+        for (const next of ns.scan(host)) {
+            if (!visited.has(next)) {
+                dfs(next, fullPath);
+            }
+        }
+    }
+
+    dfs(start);
+
+    const servers: ScannedServer[] = [];
+    let port = 1
+    for (const s of visited.keys()) {
+        const entry = visited.get(s)!;
+        if (entry.sName == "home") continue;
+        if (ns.getServer(entry.sName).isOnline !== undefined) continue;
+        servers.push(new ScannedServer(ns, entry.sName, entry.path, port,));
+        port += 2;
+    }
+    return servers;
+}
+
+function scanLite(ns:NS,servers:ScannedServer[],start = "home") {
+    const visited = new Map<string,{sName:string; path:string[]}>();
+
+    function dfs(host:string,path:string[] = []) {
+        const fullPath = [...path,host];
+        visited.set(host,{sName:host,path:fullPath});
+        for (const next of ns.scan(host)) {
+            if (!visited.has(next)) {
+                dfs(next,fullPath);
+            }
+        }
+    }
+
+    dfs(start);
+    let lastOldPort = 1;
+    for (const server of servers) {
+        lastOldPort = Math.max(lastOldPort,server.inPort);
+    }
+
+    let port = lastOldPort + 1;
+    const seen = new Set(servers.map(server => server.server.hostname));
+
+    for (const host of visited.keys()) {
+        if (host === "home" || seen.has(host)) continue;
+
+        const entry = visited.get(host);
+        if (entry) {
+            servers.push(new ScannedServer(ns, entry.sName, entry.path, port));
+            seen.add(entry.sName);
+            port += 2;
+        }
+    }
+}
+
 export async function main(ns: NS) {
     // ns.ramOverride(1.65);
     // if (ns.getServerMaxRam("home"))
 
     initTail(ns, "unBasic", 600, 500, 12);
-    const servers = scan(ns, "home");
+    let servers = scan(ns, "home");
     const groupChangeInterval = 5;
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };
     const clockServer = servers[0];
     let lastTimeSource = Date.now();
     while (true) {
+        scanLite(ns,servers,"home")
         const now = Date.now();
         const dt = now - lastTimeSource;
         lastTimeSource = now;
@@ -142,7 +174,6 @@ export async function main(ns: NS) {
         if (clockServer) {
             clockServer.timeActive += dt;
         }
-
         for (const server of servers) {
             server.normalizeColor();
             server.runSelf(ns);

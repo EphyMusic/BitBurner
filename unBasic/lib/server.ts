@@ -15,6 +15,7 @@ export class ScannedServer {
     actColor: { r: number, g: number, b: number };
     keepGrowing: boolean = false
     timer:number = 0
+    error:string | null = null
 
     constructor(ns: NS, name: string, path: string[], port: number) {
         this.server = ns.getServer(name);
@@ -170,6 +171,8 @@ export class ScannedServer {
                 else if (proc.filename.includes("hack")) output = "Hacking";
                 else if (proc.filename.includes("share")) output = "Sharing";
             }
+        } else if (this.server.maxRam == 0){
+            output = "NO RAM";
         }
         return output;
     }
@@ -297,6 +300,7 @@ export class ScannedServer {
         if (!isFinite(threads) || threads === 0) return false;
         const t = this.server.hostname;
         if (!ns.exec(payload, t, threads, this.outPort,this.inPort)) {
+            // this.error = `in doAction(ns,${payload}}): Cannot execute files. Reason unknown. Analyze server?`
             return false;
         }
         this.setTimer(ns,payload)
@@ -335,6 +339,7 @@ export class ScannedServer {
             default:
                 return false;
         }
+        
     }
 
 
@@ -362,6 +367,12 @@ export class ScannedServer {
                 minSec = this.server.minDifficulty as number;
                 output += colorize(`${ns.format.number(minSec,1)}/${ns.format.number(currSec,1)} | `, this.secColor.r, this.secColor.g, this.secColor.b)
             }
+
+            if (this.error) {
+                output += ` ${colorize(String(this.error),255,75,75)}`;
+                return output;
+            }
+            
             let actionTime = ns.format.time(this.timer)
             if (actionTime.includes("minutes")) actionTime = actionTime.replace("inutes","");
             else if (actionTime.includes("minute")) actionTime = actionTime.replace("inute","");
@@ -384,7 +395,7 @@ export class ScannedServer {
         const bd = this.server.backdoorInstalled && this.server.backdoorInstalled
         let obd = `${colorize("false", 255, 0, 0)}`
         if (bd === true) obd = `${colorize("true", 0, 255, 0)}`;
-        output += `${colorize(" | bd?:", this.servColor.r, this.servColor.g, this.servColor.b)}${obd}`
+        output += `${colorize(" | bd?:", this.servColor.r, this.servColor.g, this.servColor.b)}${obd}`;
         return output;
     }
 }
