@@ -9,7 +9,6 @@ type SpinnerInfo = {
     b: number
 }
 
-
 function constructSpinner(seed = Math.random()) {
     const spinners = [
         [`◴`, `◷`, `◶`, `◵`],
@@ -28,13 +27,32 @@ function constructSpinner(seed = Math.random()) {
     return spinners[idx];
 }
 
-function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, spinner: SpinnerInfo,dt:number) {
-    const sprite: string[] = spinner.spinner;
+function makeGroup(servers: string[], limit: number = 5): string[][] {
+    const fullGroup: string[][] = []
+    let group: string[] = []
+    let x = 0;
+    for (const s of servers) {
+        if (x >= limit) {
+            x = 0;
+            fullGroup.push(group);
+            group = [];
+        }
+        group.push(s);
+        x += 1;
+    }
+    if (group.length < limit) {
+        while (group.length < limit) group.push("");
+    }
+    fullGroup.push(group);
+    return fullGroup;
+}
+
+function formatGroups(ns:NS,servers:ScannedServer[],limit:number = 5,dt:number):string[][][] {
     const root: string[] = [];
     const unroot: string[] = [];
     const rootServers: ScannedServer[] = [];
     const unrootServers: ScannedServer[] = [];
-
+    
     for (const server of servers) {
         if (server.hasRoot()) {
             rootServers.push(server);
@@ -42,7 +60,7 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
             unrootServers.push(server);
         }
     }
-
+    
     const rootOrder: Record<string, number> = {
         "Hacking": 0,
         "Growing": 1,
@@ -58,23 +76,32 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
         const bRank = rootOrder[bAction] ?? rootOrder.Waiting;
         return aRank - bRank;
     });
-
-
+    
+    
     unrootServers.sort((a,b) => {
         const aSkill = a.server.requiredHackingSkill?? 0;
         const bSkill = b.server.requiredHackingSkill?? 0;
         return bSkill - aSkill;
     })
-
+    
     for (const server of rootServers) {
         root.push(server.output(ns,dt))
     }
     for (const server of unrootServers) {
         unroot.push(server.output(ns,dt))
     }
+    
+    const rootGroups = makeGroup(root, limit);
+    const unrootGroups = makeGroup(unroot, limit);
+    return[rootGroups,unrootGroups];
+}
 
-    const rootGroups = makeGroup(root, 10);
-    const unrootGroups = makeGroup(unroot, 10);
+function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, spinner: SpinnerInfo,dt:number) {
+    const sprite: string[] = spinner.spinner;
+    const groups = formatGroups(ns,servers,10,dt);
+    const rootGroups = groups[0];
+    const unrootGroups = groups[1];
+
     const elapsedMs = servers[0]?.timeActive ?? 0;
     const tick = Math.floor(elapsedMs / (groupChangeInterval * 1000));
 
@@ -101,46 +128,22 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
     }
 }
 
-function makeGroup(servers: string[], limit: number = 5): string[][] {
-    const fullGroup: string[][] = []
-    let group: string[] = []
-    let x = 0;
-    for (const s of servers) {
-        if (x >= limit) {
-            x = 0;
-            fullGroup.push(group);
-            group = [];
-        }
-        group.push(s);
-        x += 1;
-    }
-    if (group.length < limit) {
-        while (group.length < limit) group.push("");
-    }
-    fullGroup.push(group);
-    return fullGroup;
-}
-
-function formatGroups(server: string[][], root: boolean) {
-
-}
-
 function scan(ns: NS, start = "home"): ScannedServer[] {
     const visited = new Map<string, { sName: string; path: string[] }>();
-
+    
     function dfs(host: string, path: string[] = []) {
         const fullPath = [...path, host];
         visited.set(host, { sName: host, path: fullPath });
-
+        
         for (const next of ns.scan(host)) {
             if (!visited.has(next)) {
                 dfs(next, fullPath);
             }
         }
     }
-
+    
     dfs(start);
-
+    
     const servers: ScannedServer[] = [];
     let port = 1
     for (const s of visited.keys()) {
@@ -150,10 +153,6 @@ function scan(ns: NS, start = "home"): ScannedServer[] {
         servers.push(new ScannedServer(ns, entry.sName, entry.path, port,));
         port += 2;
     }
-    // for (const c of ns.cloud.getServerNames()) {
-    //     servers.push(new ScannedServer(ns,c,["home",c],port))
-    //     port++;
-    // }
     return servers;
 }
 
