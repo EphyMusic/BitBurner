@@ -32,13 +32,45 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
     const sprite: string[] = spinner.spinner;
     const root: string[] = [];
     const unroot: string[] = [];
+    const rootServers: ScannedServer[] = [];
+    const unrootServers: ScannedServer[] = [];
 
     for (const server of servers) {
         if (server.hasRoot()) {
-            root.push(server.output(ns,dt));
+            rootServers.push(server);
         } else {
-            unroot.push(server.output(ns,dt));
+            unrootServers.push(server);
         }
+    }
+
+    const rootOrder: Record<string, number> = {
+        "Hacking": 0,
+        "Growing": 1,
+        "Weakening": 2,
+        "Sharing": 3,
+        "NO RAM": 4,
+        "Waiting": 5
+    };
+    rootServers.sort((a, b) => {
+        const aAction = a.action(ns);
+        const bAction = b.action(ns);
+        const aRank = rootOrder[aAction] ?? rootOrder.Waiting;
+        const bRank = rootOrder[bAction] ?? rootOrder.Waiting;
+        return aRank - bRank;
+    });
+
+
+    unrootServers.sort((a,b) => {
+        const aSkill = a.server.requiredHackingSkill?? 0;
+        const bSkill = b.server.requiredHackingSkill?? 0;
+        return bSkill - aSkill;
+    })
+
+    for (const server of rootServers) {
+        root.push(server.output(ns,dt))
+    }
+    for (const server of unrootServers) {
+        unroot.push(server.output(ns,dt))
     }
 
     const rootGroups = makeGroup(root, 10);
@@ -118,6 +150,10 @@ function scan(ns: NS, start = "home"): ScannedServer[] {
         servers.push(new ScannedServer(ns, entry.sName, entry.path, port,));
         port += 2;
     }
+    // for (const c of ns.cloud.getServerNames()) {
+    //     servers.push(new ScannedServer(ns,c,["home",c],port))
+    //     port++;
+    // }
     return servers;
 }
 
