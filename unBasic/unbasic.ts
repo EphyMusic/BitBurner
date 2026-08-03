@@ -81,7 +81,7 @@ function formatGroups(ns:NS,servers:ScannedServer[],limit:number = 5,dt:number):
     unrootServers.sort((a,b) => {
         const aSkill = a.server.requiredHackingSkill?? 0;
         const bSkill = b.server.requiredHackingSkill?? 0;
-        return bSkill - aSkill;
+        return aSkill - bSkill;
     })
     
     for (const server of rootServers) {
