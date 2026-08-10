@@ -1,4 +1,4 @@
-import {NS,Server} from "@ns"
+// import {NS,Server} from "@ns"
 import {ScannedServer,bDoorWrite} from "unBasic/lib/server"
 import {colorize,initTail} from "unBasic/lib/common"
 
@@ -91,8 +91,8 @@ function formatGroups(ns:NS,servers:ScannedServer[],limit:number = 5,dt:number):
         unroot.push(server.output(ns,dt))
     }
     
-    const rootGroups = makeGroup(root, limit);
-    const unrootGroups = makeGroup(unroot, limit);
+    const rootGroups = makeGroup(root, limit * 1.5);
+    const unrootGroups = makeGroup(unroot, limit / 2);
     return[rootGroups,unrootGroups];
 }
 
@@ -217,6 +217,6 @@ export async function main(ns: NS) {
         display(ns,servers,groupChangeInterval,spinner,dt);
         ns.ui.renderTail();
         bDoorWrite(ns, servers);
-        await ns.sleep(200);
+        await ns.sleep(100);
     }
 }
