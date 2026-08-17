@@ -47,13 +47,13 @@ export class ScannedServer {
     }
 
     updateColorAndMetrics(ns: NS,dt:number) {
-        if (!(this.timer <= 0)) Math.max(0,this.timer += -dt);
+        if (!(this.timer <= 0)) this.timeDown(dt);
         else {
             const action = this.action(ns);
             const inPort = ns.getPortHandle(this.inPort)
             if (inPort.peek() !== "NULL PORT DATA") {
                 if (inPort.read() === "RESET") {
-                    this.setTimer(ns,action.toLowerCase())
+                    this.setTimer(ns,action.toLowerCase(),true)
                 }
             }   
         }
@@ -97,8 +97,6 @@ export class ScannedServer {
     }
     
     growTime(ns:NS):number {
-        
-
         return ns.getGrowTime(this.server.hostname);
     }
 
@@ -112,7 +110,7 @@ export class ScannedServer {
 
     timeDown(dt:number) {
         if (this.timer <= 0) return;
-        this.timer += -dt;
+        this.timer = Math.max(this.timer - dt,0);
     }
 
     canRoot(ns: NS): boolean {
@@ -276,7 +274,6 @@ export class ScannedServer {
             const old = outPort.peek()
             for (let x = 0; x < info.length; x++) {
                 if (old[x] !== info[x]) {
-                    outPort.clear();
                     outPort.write(info);
                     break;
                 }
@@ -285,8 +282,8 @@ export class ScannedServer {
         return true;
     }
 
-    setTimer(ns:NS,payload:string) {
-        if (this.timer <= 0) {
+    setTimer(ns:NS,payload:string,reset:boolean = false) {
+        if (this.timer <= 0 || reset) {
             if (payload.includes("weak")) this.timer = this.weakTime(ns);
             else if (payload.includes("hack")) this.timer = this.hackTime(ns);
             else if (payload.includes("grow")) this.timer = this.growTime(ns);
@@ -408,5 +405,5 @@ export function bDoorWrite(ns: NS, servers: ScannedServer[]) {
         if (!server.hasRoot() || server.server.purchasedByPlayer) continue;
         if (!server.server.backdoorInstalled) fileContent += `${server.path.join(";connect ")}; backdoor\n`
     }
-    if (fileContent !== ns.read("backdoors.txt")) ns.write("backdoors.txt", fileContent, "w")
+    if (fileContent !== ns.read("backdoors.txt")) ns.write("backdoors.txt", fileContent, "w");
 }
