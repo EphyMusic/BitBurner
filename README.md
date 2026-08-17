@@ -1,4 +1,4 @@
-Simple way to install unBasic [x]  
+Simple way to install unBasic 
 
 copy and paste in bitburner terminal:  
 
