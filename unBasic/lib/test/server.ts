@@ -1,4 +1,4 @@
-import { Server,NS } from "@ns";
+// import { Server,NS } from "@ns";
 import {colorize} from "../common"
 
 class ScannedServer {
@@ -175,3 +175,4 @@ export function bDoorWrite(ns: NS, servers: ScannedServer[]) {
     }
     if (fileContent !== ns.read("backdoors.txt")) ns.write("backdoors.txt", fileContent, "w")
 }
+
