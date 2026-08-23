@@ -1,5 +1,5 @@
 // import {NS,Server} from "@ns"
-import {ScannedServer,bDoorWrite} from "unBasic/lib/server"
+import {ScannedServer,bDoorWrite} from "/unBasic/lib/server"
 import {colorize,initTail} from "unBasic/lib/common"
 
 type SpinnerInfo = {
@@ -20,7 +20,8 @@ function constructSpinner(seed = Math.random()) {
         [`▖`, `▘`, `▝`, `▗`],
         [`◢`, `◣`, `◤`, `◥`],
         [`◰`, `◳`, `◲`, `◱`],
-        [`◐`, `◓`, `◑`, `◒`]
+        [`◐`, `◓`, `◑`, `◒`],
+        [`x`,` +`,`  x`,`   +`, `    x`, `     +`,`      x`,`       +`,``,``,``,``]
     ];
     const s = Math.max(0, Math.min(0.999999, Number(seed) || 0));
     const idx = Math.floor(s * spinners.length);
@@ -54,7 +55,7 @@ function formatGroups(ns:NS,servers:ScannedServer[],limit:number = 5,dt:number):
     const unrootServers: ScannedServer[] = [];
     
     for (const server of servers) {
-        if (server.hasRoot()) {
+        if (server.server.hasAdminRights) {
             rootServers.push(server);
         } else {
             unrootServers.push(server);
@@ -96,7 +97,7 @@ function formatGroups(ns:NS,servers:ScannedServer[],limit:number = 5,dt:number):
     return[rootGroups,unrootGroups];
 }
 
-function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, spinner: SpinnerInfo,dt:number) {
+function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, spinner: SpinnerInfo,frame:number,dt:number) {
     const sprite: string[] = spinner.spinner;
     const groups = formatGroups(ns,servers,10,dt);
     const rootGroups = groups[0];
@@ -105,12 +106,12 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
     const elapsedMs = servers[0]?.timeActive ?? 0;
     const tick = Math.floor(elapsedMs / (groupChangeInterval * 1000));
 
-    const frame = sprite.length > 0 ? Math.floor(elapsedMs % sprite.length) : 0;
     const rGroupSel = rootGroups.length > 0 ? Math.floor(tick % rootGroups.length) : 0;
     const unGroupSel = unrootGroups.length > 0 ? Math.floor(tick % unrootGroups.length) : 0;
+    ns.print(`${colorize(sprite[frame], spinner.r, spinner.g, spinner.b)}`)
 
     if (rootGroups.length > 0) {
-        ns.print(`${colorize(sprite[frame], spinner.r, spinner.g, spinner.b)}\nRoot [${rGroupSel + 1}/${rootGroups.length}]`);
+        ns.print(`\nRoot [${rGroupSel + 1}/${rootGroups.length}]`);
         for (const s of rootGroups[rGroupSel]) {
             ns.print(`${s}\n`);
         }
@@ -151,7 +152,7 @@ function scan(ns: NS, start = "home"): ScannedServer[] {
         if (entry.sName == "home") continue;
         if (ns.getServer(entry.sName).isOnline !== undefined) continue;
         servers.push(new ScannedServer(ns, entry.sName, entry.path, port,));
-        port += 2;
+        port += 1;
     }
     return servers;
 }
@@ -172,7 +173,7 @@ function scanLite(ns:NS,servers:ScannedServer[],start = "home") {
     dfs(start);
     let lastOldPort = 1;
     for (const server of servers) {
-        lastOldPort = Math.max(lastOldPort,server.inPort);
+        lastOldPort = Math.max(lastOldPort,server.resetPort);
     }
 
     let port = lastOldPort + 1;
@@ -191,13 +192,19 @@ function scanLite(ns:NS,servers:ScannedServer[],start = "home") {
 }
 
 export async function main(ns: NS) {
-    // ns.ramOverride(1.65);
-    // if (ns.getServerMaxRam("home"))
-
+    const script = ns.getRunningScript() as RunningScript;
+    const selfRam = ns.getScriptRam(script.filename);
+    if (selfRam <= ns.getServerMaxRam("home")) {
+        ns.ramOverride(selfRam);
+    } else {
+        ns.ramOverride(7.1)
+    }
     initTail(ns, "unBasic", 600, 500, 12);
     let servers = scan(ns, "home");
     const groupChangeInterval = 5;
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };
+    let frame = 0;
+    let cycles = 0;
     const clockServer = servers[0];
     let lastTimeSource = Date.now();
     while (true) {
@@ -214,9 +221,18 @@ export async function main(ns: NS) {
             server.runSelf(ns);
         }
         ns.clearLog();
-        display(ns,servers,groupChangeInterval,spinner,dt);
+        display(ns,servers,groupChangeInterval,spinner,frame,dt);
         ns.ui.renderTail();
         bDoorWrite(ns, servers);
+        frame ++;
+        if (frame >= spinner.spinner.length) {
+            frame = 0
+            cycles ++;
+            if (cycles > 30) {
+                spinner.spinner = constructSpinner()
+                cycles = 0
+            }
+        }
         await ns.sleep(100);
     }
 }
