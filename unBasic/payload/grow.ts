@@ -7,7 +7,7 @@ export async function main(ns:NS) {
         while (true) {
             port.write("RESET");
             await ns.grow();
-            await ns.sleep(300);
+            port.clear();
         }
     } else {
         while (true) await ns.grow();

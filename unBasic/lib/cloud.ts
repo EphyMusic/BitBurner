@@ -1,6 +1,13 @@
-import {colorize} from "./common";
-import {NS} from "@ns";
+import {NS} from "@ns"
 
-class CloudNode {
+export class ProxyServer {
+	server:Server;
+
+	constructor(ns:NS,hostname:string) {
+		this.server = ns.getServer(hostname)
+	}
+}
+
+export async function main(ns:NS) {
 	
 }
