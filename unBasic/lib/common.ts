@@ -49,7 +49,7 @@ export function constructSpinner(seed = Math.random()) {
     return spinners[idx];
 }
 
-export async function initTail(ns: NS, title: string, width: number, height: number, fontSize: number) {
+export function initTail(ns: NS, title: string, width: number, height: number, fontSize: number) {
     ns.disableLog("ALL");
     ns.ui.openTail();
     // await boot(ns);
