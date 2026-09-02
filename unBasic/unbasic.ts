@@ -1,6 +1,7 @@
 // import { NS, Server } from "@ns";
-import { ScannedServer, bDoorWrite } from "/unBasic/lib/server";
-import { colorize, initTail } from "unBasic/lib/common";
+import { ScannedServer, bDoorWrite } from "./lib/server";
+// import { ProxyServer } from "./lib/cloud";
+import { colorize, initTail } from "./lib/common";
 
 type SpinnerInfo = {
     spinner: string[];
@@ -106,7 +107,7 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
     ns.print(`${colorize(sprite[frame], spinner.r, spinner.g, spinner.b)}`);
 
     if (rootGroups.length > 0) {
-        ns.print(`\nRoot [${rGroupSel + 1}/${rootGroups.length}]`);
+        ns.print(`Root [${rGroupSel + 1}/${rootGroups.length}]`);
         for (const entry of rootGroups[rGroupSel]) ns.print(`${entry}\n`);
     } else {
         ns.print("(none)\n");
@@ -178,15 +179,17 @@ function scanLite(ns: NS, servers: ScannedServer[], start = "home") {
 }
 
 export async function main(ns: NS) {
-    const script = ns.getRunningScript() as RunningScript;
-    const selfRam = ns.getScriptRam(script.filename);
-    if (selfRam <= ns.getServerMaxRam("home")) {
-        ns.ramOverride(selfRam);
-    } else {
-        ns.ramOverride(7.1);
-    }
+    /// Basic Module 7.10GB
+    // ns.ramOverride(7.2)
+    // if (9.35 <= ns.getServerMaxRam("home")) {
+    //     ns.tprint("Everything fits")
+    //     ns.ramOverride();
+    // } else {
+    //     ns.tprint("Running basic")
+    //     ns.ramOverride(7.10);
+    // }
 
-    initTail(ns, "unBasic", 600, 500, 12);
+    initTail(ns, "unBasic", 560, 450, 12);
     const servers = scan(ns, "home");
     const groupChangeInterval = 5;
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };

@@ -1,4 +1,5 @@
-import { NS, Server } from "@ns";
+// import { NS, Server } from "@ns";
+// import { ProxyServer } from "./cloud";
 import { colorize } from "./common";
 
 export class ScannedServer {
@@ -17,11 +18,11 @@ export class ScannedServer {
     timer = 0;
     error: string | null = null;
 
-    constructor(ns: NS, hostname: string, path: string[], port: number) {
+    constructor(ns: NS, hostname: string, path: string[], port: number,state:string = "INIT") {
         this.server = ns.getServer(hostname);
         this.path = path;
         this.resetPort = port;
-        this.state = "UNASSIGNED";
+        this.state = state;
         this.initState(ns);
         this.weakening = false;
         this.lastSec = this.server.hackDifficulty ?? 0;
@@ -224,7 +225,14 @@ export class ScannedServer {
     }
 
     initState(ns: NS) {
-        if (!this.server.hasAdminRights) {
+        if (this.server.maxRam == 0) {
+            this.state = "UNASSIGNED";
+            return;
+        }
+        if (this.state == "SHARE" && this.server.hasAdminRights) return;
+        if (this.server.purchasedByPlayer) {
+            this.state = "PROXY";
+        } else if (!this.server.hasAdminRights) {
             this.state = "ROOT";
         } else if (!this.server.moneyMax || this.server.moneyMax === 0) {
             this.state = "SHARE";

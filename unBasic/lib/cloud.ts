@@ -1,13 +1,16 @@
-import {NS} from "@ns"
-
 export class ProxyServer {
+	hostname:string;
+	target:string;
 	server:Server;
 
-	constructor(ns:NS,hostname:string) {
-		this.server = ns.getServer(hostname)
+	constructor(ns:NS,target:string) {
+		this.target = target;
+		this.hostname = `PRX-${target}` 
+		ns.cloud.purchaseServer(this.hostname,8)
+		this.server = ns.getServer(this.hostname);
 	}
-}
 
-export async function main(ns:NS) {
 	
+
+
 }

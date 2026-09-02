@@ -1,4 +1,4 @@
-import {NS} from "@ns"
+// import {NS} from "@ns"
 
 //Color utils
 export function colorize(text: string, r: number, g: number, b: number) {

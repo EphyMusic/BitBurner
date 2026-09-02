@@ -79,18 +79,22 @@ export class HacknetNode {
 
 export async function initHacknet(ns: NS):Promise<HacknetNode[]> {
 	const nodes:HacknetNode[] = [];
+	const numNodes = ns.hacknet.numNodes();
+	for (let i = 0; i < numNodes;i++) {
+		nodes.push(new HacknetNode(ns,i));
+	}
 	let idx:number = 0;
 	while (idx !== -1) {
 		idx = ns.hacknet.purchaseNode()
 		if (idx === -1) break;
 		nodes.push(new HacknetNode(ns,idx));
-		await ns.sleep(30)
+		await ns.sleep(10)
 	}
-	if (nodes.length === 0) {
-		const tNodes = ns.hacknet.numNodes()
-		if (tNodes === 0) return nodes;
-		for (let n = 0;n<tNodes;n++) nodes.push(new HacknetNode(ns,n));
-	}
+	// if (nodes.length === 0) {
+	// 	const tNodes = ns.hacknet.numNodes()
+	// 	if (tNodes === 0) return nodes;
+	// 	for (let n = 0;n<tNodes;n++) nodes.push(new HacknetNode(ns,n));
+	// }
 	return nodes;
 }
 
@@ -105,7 +109,8 @@ export async function main(ns:NS) {
 		const now:number = Date.now();
 		const dt:number = now - lastTime;
 		const output:string[] = [];
-		let sum:number = 0;
+		let perSecSum:number = 0;
+		let totalSum:number = 0;
 		for (const node of nodes) {
 			if (node.shouldRest) {
 				if (node.restTimer > 0) {
@@ -115,11 +120,12 @@ export async function main(ns:NS) {
 				}
 			}
 			node.runSelf(ns);
-			sum += node.stats.production;
+			perSecSum += node.stats.production;
+			totalSum += node.stats.totalProduction
 			output.push(node.output(ns));
 			lastTime = now;
 		}
-		ns.print("$" + ns.format.number(sum) + "/s\n" + output.join("\n"))
+		ns.print("$" + ns.format.number(perSecSum) + "/s | $" + ns.format.number(totalSum) + "\n" + output.join("\n"))
 		ns.ui.renderTail();
 		await ns.sleep(100);
 		
