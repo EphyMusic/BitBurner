@@ -1,22 +1,22 @@
 // import { NS, Server } from "@ns";
-// import { ProxyServer } from "./cloud";
 import { colorize } from "./common";
 
 export class ScannedServer {
-    server: Server;
-    path: string[];
-    timeActive = 0;
-    state: string;
-    weakening: boolean;
-    lastSec: number;
-    lastMon: number;
-    resetPort: number;
-    monColor: { r: number; g: number; b: number };
-    secColor: { r: number; g: number; b: number };
-    servColor: { r: number; g: number; b: number };
-    actColor: { r: number; g: number; b: number };
-    timer = 0;
-    error: string | null = null;
+    public server: Server;
+    public path: string[];
+    public timeActive = 0;
+    public state: string;
+    private weakening: boolean;
+    private lastSec: number;
+    private lastMon: number;
+    public resetPort: number;
+    private monColor: { r: number; g: number; b: number };
+    private secColor: { r: number; g: number; b: number };
+    private servColor: { r: number; g: number; b: number };
+    private actColor: { r: number; g: number; b: number };
+    public timer = 0;
+    private error: string | null = null;
+    public target: string = "N/A"
 
     constructor(ns: NS, hostname: string, path: string[], port: number,state:string = "INIT") {
         this.server = ns.getServer(hostname);
@@ -35,15 +35,15 @@ export class ScannedServer {
     }
 
     growTime(ns: NS): number {
-        return ns.getGrowTime(this.server.hostname);
+        return ns.getGrowTime(this.target !== "N/A"? this.target : this.server.hostname);
     }
 
     weakTime(ns: NS): number {
-        return ns.getWeakenTime(this.server.hostname);
+        return ns.getWeakenTime(this.target !== "N/A"? this.target : this.server.hostname);
     }
 
     hackTime(ns: NS): number {
-        return ns.getHackTime(this.server.hostname);
+        return ns.getHackTime(this.target !== "N/A"? this.target : this.server.hostname);
     }
 
     timeDown(dt: number) {
@@ -77,10 +77,10 @@ export class ScannedServer {
     updateColorAndMetrics(ns: NS, dt: number) {
         const action = this.weakening ? "WEAK" : this.state;
         const resetPort = ns.getPortHandle(this.resetPort);
-        if (this.timer > 0) {
-            this.timeDown(dt);
-        } else if (resetPort.peek() !== "NULL PORT DATA" && resetPort.read() === "RESET") {
+        if (resetPort.peek() !== "NULL PORT DATA" && resetPort.read() === "RESET") {
                 this.setTimer(ns, action.toLowerCase(), true);
+        } else if (this.timer > 0) {
+            this.timeDown(dt);
         }
 
         const currMoney = this.server.moneyAvailable ?? 0;
@@ -207,7 +207,8 @@ export class ScannedServer {
         const threads = this._calculateThreads(ns, srcFile);
         if (!isFinite(threads) || threads === 0) return false;
         const target = this.server.hostname;
-        if (!ns.exec(payload, target, threads, this.resetPort)) return false;
+        const proxtarg = this.target !== "N/A" ? this.target : "self";
+        if (!ns.exec(payload, target, threads, this.resetPort, proxtarg)) return false;
         this.setTimer(ns, payload, true);
         return true;
     }
@@ -225,13 +226,17 @@ export class ScannedServer {
     }
 
     initState(ns: NS) {
-        if (this.server.maxRam == 0) {
-            this.state = "UNASSIGNED";
+        if (this.server.maxRam == 0 && this.server.hasAdminRights) {
+            this.state = "USEPROXY";
             return;
         }
         if (this.state == "SHARE" && this.server.hasAdminRights) return;
         if (this.server.purchasedByPlayer) {
-            this.state = "PROXY";
+            if (this.target !== "N/A") {
+                this.state = "PROXHACK";
+            } else {
+                this.state = "PROXY"
+            }
         } else if (!this.server.hasAdminRights) {
             this.state = "ROOT";
         } else if (!this.server.moneyMax || this.server.moneyMax === 0) {
@@ -279,6 +284,11 @@ export class ScannedServer {
         const currentSecurity = this.server.hackDifficulty as number;
         const maxMoney = this.server.moneyMax as number;
         const minimumSecurity = this.server.minDifficulty as number;
+        const targServ = ns.getServer(this.target !== "N/A" ? this.target : this.server.hostname);
+        const targSecMin = targServ.minDifficulty as number;
+        const targSecCur = targServ.hackDifficulty as number;
+        const targMoneyMax = targServ.moneyMax as number;
+        const targMoneyCur = targServ.moneyAvailable as number;
 
         switch (this.state) {
             case "GROW":
@@ -305,6 +315,36 @@ export class ScannedServer {
                 this.state = "HACK";
                 return;
 
+            case "PROXY":
+                if (this.target === "N/A") return;
+                this.state = (targMoneyCur < targMoneyMax / 10) ? "PROXGROW" : "PROXHACK";
+                return;
+
+            case "PROXGROW":
+                // ns.tprint(`${this.server.hostname} -> Grow -> ${this.target}`)
+                if (this.weakening) {
+                    if (targSecCur !== targSecMin) {
+                        if (this.alreadyRunning(ns,"/payload/weaken.ts")) return;
+                        this.doAction(ns,"payload/weaken.ts");
+                        return;
+                    }
+                    this.weakening = false;
+                    return;
+                }
+
+                if (targMoneyCur !== maxMoney) {
+                    if (targSecCur !> targSecMin * 1.2) {
+                        if (this.alreadyRunning(ns,"/payload/grow.ts")) return;
+                        this.doAction(ns,"/payload/grow.ts");
+                        return;
+                    }
+                    this.weakening = true;
+                    return;
+                }
+                
+                this.state = "PROXHACK";
+                return;
+
             case "HACK":
                 if (this.weakening) {
                     if (currentSecurity !== minimumSecurity) {
@@ -329,6 +369,31 @@ export class ScannedServer {
                 this.state = "GROW";
                 return;
 
+            case "PROXHACK":
+                // ns.tprint(`${this.server.hostname} -> Hack -> ${this.target}`)
+                if (this.weakening) {
+                    if (targSecCur !== targSecMin) {
+                        if (this.alreadyRunning(ns,"/payload/weaken.ts")) return;
+                        this.doAction(ns,"/payload/weaken.ts");
+                        return;
+                    }
+                    this.weakening = false;
+                    return;
+                }
+
+                if (!(targMoneyCur < targMoneyMax / 10)) {
+                    if (!(targSecCur > targSecMin * 1.2)) {
+                        if (this.alreadyRunning(ns,"/payload/hack.ts")) return;
+                        this.doAction(ns, "/payload/hack.ts");
+                        return;
+                    }
+                    this.weakening = true;
+                    return;
+                }
+
+                this.state = "PROXGROW";
+                return;
+
             case "ROOT":
                 if (this.canRoot(ns) && this.getRoot(ns)) {
                     this.state = "INIT";
@@ -342,6 +407,12 @@ export class ScannedServer {
             case "SHARE":
                 this.runShare(ns);
                 return;
+
+            case "PROXY":
+                if (this.target !== "N/A") {
+                    this.state = "INIT"
+                }
+            
 
             default:
                 return;
@@ -362,28 +433,19 @@ export class ScannedServer {
         let name = this.server.hostname;
         if (name.length > 8) name = name.slice(0, 5) + "...";
 
-        let action = "Waiting";
-        const procs = ns.ps(this.server.hostname);
-        if (procs.length > 0) {
-            for (const proc of procs) {
-                if (proc.filename.includes("weak")) action = "Weakening";
-                else if (proc.filename.includes("hack")) action = "Hacking";
-                else if (proc.filename.includes("grow")) action = "Growing";
-                else if (proc.filename.includes("share")) action = "Sharing";
-            }
-        }
+        let action = this.action(ns);
 
         this.updateColorAndMetrics(ns, dt);
 
         output += colorize(`[${name}]: `, this.servColor.r, this.servColor.g, this.servColor.b);
         if (this.server.hasAdminRights) {
-            if (this.server.moneyMax && this.server.moneyAvailable) {
+            if (this.server.moneyMax && this.server.moneyAvailable && !this.server.purchasedByPlayer) {
                 maxMoney = this.server.moneyMax as number;
                 currMoney = this.server.moneyAvailable as number;
                 output += colorize(`$${ns.format.number(currMoney, 2)}/$${ns.format.number(maxMoney, 2)} | `, this.monColor.r, this.monColor.g, this.monColor.b);
             }
 
-            if (this.server.minDifficulty && this.server.hackDifficulty) {
+            if (this.server.minDifficulty && this.server.hackDifficulty && !this.server.purchasedByPlayer) {
                 currSec = this.server.hackDifficulty as number;
                 minSec = this.server.minDifficulty as number;
                 output += colorize(`${ns.format.number(minSec, 1)}/${ns.format.number(currSec, 1)} | `, this.secColor.r, this.secColor.g, this.secColor.b);
@@ -411,7 +473,11 @@ export class ScannedServer {
             else output += `${colorize(String(reqHackLV), 0, 255, 0)}`;
         }
 
-        if (this.server.purchasedByPlayer || !this.server.hasAdminRights) return output;
+        if (!this.server.hasAdminRights) return output;
+        if (this.server.purchasedByPlayer) {
+            output+= colorize(` ---> ${this.target}`,255,255,100);
+            return output;
+        }
 
         const bd = this.server.backdoorInstalled && this.server.backdoorInstalled;
         let obd = `${colorize("false", 255, 0, 0)}`;

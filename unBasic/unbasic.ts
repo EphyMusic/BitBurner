@@ -205,10 +205,29 @@ export async function main(ns: NS) {
         lastTimeSource = now;
 
         if (clockServer) clockServer.timeActive += dt;
+        const needProxy:ScannedServer[] = []
+        const isProxy:ScannedServer[] = []
         for (const server of servers) {
+            if (server.state === "USEPROXY") {
+                needProxy.push(server);
+                continue;
+            } else if (server.state === "PROXY") {
+                isProxy.push(server);
+                continue;
+            }
             server.normalizeColor();
             server.runSelf(ns);
         }
+        const pairCount = Math.min(needProxy.length, isProxy.length);
+        for (let i = 0;i < pairCount;i++) {
+            if (isProxy[i].target === "N/A") {
+                isProxy[i].target = needProxy[i].server.hostname
+            }
+        }
+        for (const prox of isProxy) {
+            prox.runSelf(ns)
+        }
+        
 
         ns.clearLog();
         display(ns, servers, groupChangeInterval, spinner, frame, dt);
@@ -224,7 +243,7 @@ export async function main(ns: NS) {
                 cycles = 0;
             }
         }
-
+        
         await ns.sleep(100);
     }
 }

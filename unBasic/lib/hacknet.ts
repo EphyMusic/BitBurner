@@ -73,7 +73,7 @@ export class HacknetNode {
 			this.max.lv = true;
 		}
 		this.shouldRest = !upgraded;
-		if (this.shouldRest) this.restTimer = 30000;
+		if (this.shouldRest) this.restTimer = 30000 + ((Math.random() * 4)-2);
 	}
 }
 
