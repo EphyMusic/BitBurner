@@ -22,6 +22,7 @@ export async function main(ns: NS) {
 		{_: ns.tprint("Downloading server.ts"),name: "server.ts",success: await ns.wget("https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/lib/server.ts","/unBasic/lib/server.ts","home"),manual: "wget https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/lib/server.ts /unBasic/lib/server.ts"},
 		{_: ns.tprint("Downloading hacknet.ts..."),name: "hacknet.ts",success: await ns.wget("https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/lib/hacknet.ts","/unBasic/lib/hacknet.ts","home"),manual: "wget https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/lib/hacknet.ts /unBasic/lib/hacknet.ts" },
 		{_: ns.tprint("Downloading megaShare.ts..."),name: "megaShare.ts",success: await ns.wget("https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/megaShare.ts","unBasic/megaShare.ts", "home"),manual: "wget https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/megaShare.ts unBasic/megaShare.ts"},
+		{_: ns.tprint("Downloading page.ts..."),name: "page.ts",success: await ns.wget("https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/lib/page.ts","unBasic/lib/page.ts", "home"),manual: "wget https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/unBasic/lib/page.ts unBasic/megaShare.ts"}
 	];
 	const errors:DownloadError[] = []
 	for (const file of files) {
