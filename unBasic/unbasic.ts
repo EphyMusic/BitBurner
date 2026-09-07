@@ -32,6 +32,7 @@ function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
     let w:number;
     let [x,_y] = ns.ui.windowSize();
     let h = 50 + (Math.max(0,group.length - 1) * 19);
+    let title = "unBasic"
 
     switch (true) {
         case group.length < 10:
@@ -45,12 +46,15 @@ function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
     switch (page) {
         case "ROOT":
             w = 650;
+            title += " - Root";
             break;
         case "UNROOT":
             w = 200;
+            title += " - Unroot";
             break;
         case "PROXY":
             w = 450;
+            title += " - Proxy";
             break;
     }
     x += -w;
@@ -362,8 +366,8 @@ export async function main(ns: NS) {
         output.push(`Loaded ${server.server.hostname}...`);
         remaining --;
         ns.clearLog();
-        ns.print(`Loading ${remaining} servers...`);
         ns.print(output.join("\n"));
+        ns.print(`Loading ${remaining} servers...`);
         ns.ui.renderTail();
     }
     ns.print(colorize("Server states loaded. Booting...",0,255,50));
