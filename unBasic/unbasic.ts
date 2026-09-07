@@ -249,7 +249,7 @@ function initRam(ns:NS) {
         ns.tprint(`${colorize('Can run proxy automation and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page',0,255,100)}`)
         ns.ramOverride(homeRam - 1.65);
     } else {
-        ns.tprint(`${colorize('Running basic. No access to page system. Switch pages manually with: nano unBasic/cfg/page.txt.',255,100,50)}\n${colorize("WARNING: One line only. Allowed config text (CHOOSE ONE ONLY) [ROOT,UNROOT,PROXY]",255,20,20)}`)
+        ns.tprint(`${colorize('Running basic. No access to page system. Switch pages manually with: nano unBasic/cfg/page.txt.',255,200,50)}\n${colorize("WARNING: One line only. Allowed config text (CHOOSE ONE ONLY) [ROOT,UNROOT,PROXY]",255,20,20)}`)
         ns.ramOverride(7.10);
     }
 }
