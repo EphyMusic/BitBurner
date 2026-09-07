@@ -50,6 +50,7 @@ export class HacknetNode {
 		if (this.stats.hashCapacity) output += `|Hc:${this.stats.hashCapacity}`;
 		if (this.stats.ramUsed) output += `|Ru:${this.stats.ramUsed}`;
 		output += `| $${ns.format.number(this.stats.production)}/s | $${ns.format.number(this.stats.totalProduction)} | ${ns.format.time(this.restTimer).replace("second","s").replace("ss","s").replace(" ","")}`
+		// output += `| $${ns.format.number(this.stats.production)}/s | $${ns.format.number(this.stats.totalProduction)} | ${this.restTimer}`
 		return output;
 	}
 
@@ -73,7 +74,7 @@ export class HacknetNode {
 			this.max.lv = true;
 		}
 		this.shouldRest = !upgraded;
-		if (this.shouldRest) this.restTimer = 30000 + ((Math.random() * 4)-2);
+		if (this.shouldRest) this.restTimer = 30000 + ((Math.random() * 6000) - 2000);
 	}
 }
 

@@ -1,6 +1,5 @@
 // import { NS, Server } from "@ns";
 import { ScannedServer, bDoorWrite } from "./lib/server";
-// import { ProxyServer } from "./lib/cloud";
 import { colorize, initTail } from "./lib/common";
 
 type SpinnerInfo = {
@@ -9,6 +8,55 @@ type SpinnerInfo = {
     g: number;
     b: number;
 };
+
+type PageEnum = "ROOT" | "UNROOT" | "PROXY";
+
+function page(ns: NS): PageEnum {
+    const pageFile = "/unBasic/cfg/page.txt";
+
+    if (!ns.fileExists(pageFile)) {
+        ns.write(pageFile, "ROOT", "w");
+        return "ROOT";
+    }
+
+    const value = ns.read(pageFile).trim();
+
+    if (value === "ROOT" || value === "UNROOT" || value === "PROXY") {
+        return value;
+    }
+
+    return "ROOT";
+}
+
+function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
+    let w:number;
+    let [x,_y] = ns.ui.windowSize();
+    let h = 50 + (Math.max(0,group.length - 1) * 19);
+
+    switch (true) {
+        case group.length < 10:
+            h += 45;
+            break;
+        case group.length < 30:
+            h += 20;
+            break;
+    }
+
+    switch (page) {
+        case "ROOT":
+            w = 650;
+            break;
+        case "UNROOT":
+            w = 200;
+            break;
+        case "PROXY":
+            w = 450;
+            break;
+    }
+    x += -w;
+    ns.ui.resizeTail(w,h);
+    ns.ui.moveTail(x,0);
+}
 
 function constructSpinner(seed = Math.random()) {
     const spinners = [
@@ -28,37 +76,17 @@ function constructSpinner(seed = Math.random()) {
     return spinners[idx];
 }
 
-function makeGroup(servers: string[], limit = 5): string[][] {
-    const fullGroup: string[][] = [];
-    let group: string[] = [];
-    let x = 0;
-
-    for (const server of servers) {
-        if (x >= limit) {
-            x = 0;
-            fullGroup.push(group);
-            group = [];
-        }
-        group.push(server);
-        x += 1;
-    }
-
-    if (group.length < limit) {
-        while (group.length < limit) group.push("");
-    }
-
-    fullGroup.push(group);
-    return fullGroup;
-}
-
-function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): string[][][] {
+function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): string[][] {
     const root: string[] = [];
     const unroot: string[] = [];
+    const proxy: string[] = [];
     const rootServers: ScannedServer[] = [];
     const unrootServers: ScannedServer[] = [];
+    const proxyServers: ScannedServer[] = [];
 
     for (const server of servers) {
-        if (server.server.hasAdminRights) rootServers.push(server);
+        if (server.server.purchasedByPlayer) proxyServers.push(server);
+        else if (server.server.hasAdminRights) rootServers.push(server);
         else unrootServers.push(server);
     }
 
@@ -79,6 +107,14 @@ function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): 
         return aRank - bRank;
     });
 
+    proxyServers.sort((a,b) => {
+        const aAction = a.action(ns);
+        const bAction = b.action(ns);
+        const aRank = rootOrder[aAction] ?? rootOrder.Waiting;
+        const bRank = rootOrder[bAction] ?? rootOrder.Waiting;
+        return aRank - bRank;
+    })
+
     unrootServers.sort((a, b) => {
         const aSkill = a.server.requiredHackingSkill ?? 0;
         const bSkill = b.server.requiredHackingSkill ?? 0;
@@ -87,38 +123,36 @@ function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): 
 
     for (const server of rootServers) root.push(server.output(ns, dt));
     for (const server of unrootServers) unroot.push(server.output(ns, dt));
+    for (const server of proxyServers) proxy.push(server.output(ns, dt));
 
-    const rootGroups = makeGroup(root, limit * 1.5);
-    const unrootGroups = makeGroup(unroot, limit / 2);
-    return [rootGroups, unrootGroups];
+    // const rootGroups = makeGroup(root, limit * 1.5);
+    // const unrootGroups = makeGroup(unroot, limit / 2);
+    return [root,unroot,proxy];
 }
 
 function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, spinner: SpinnerInfo, frame: number, dt: number) {
     const sprite = spinner.spinner;
     const groups = formatGroups(ns, servers, 10, dt);
-    const rootGroups = groups[0];
-    const unrootGroups = groups[1];
+    const pages = {
+        ROOT: groups[0],
+        UNROOT: groups[1],
+        PROXY: groups[2]
+    }
+    // const root = groups[0];
+    // const unroot = groups[1];
+    // const proxy = groups[2];
+    const currentPage = page(ns);
 
-    const elapsedMs = servers[0]?.timeActive ?? 0;
-    const tick = Math.floor(elapsedMs / (groupChangeInterval * 1000));
-    const rGroupSel = rootGroups.length > 0 ? Math.floor(tick % rootGroups.length) : 0;
-    const unGroupSel = unrootGroups.length > 0 ? Math.floor(tick % unrootGroups.length) : 0;
-
+    ns.clearLog();
+    updateDisplay(ns,currentPage,pages[currentPage]);
     ns.print(`${colorize(sprite[frame], spinner.r, spinner.g, spinner.b)}`);
-
-    if (rootGroups.length > 0) {
-        ns.print(`Root [${rGroupSel + 1}/${rootGroups.length}]`);
-        for (const entry of rootGroups[rGroupSel]) ns.print(`${entry}\n`);
-    } else {
-        ns.print("(none)\n");
+    ns.print(`${currentPage}`);
+    let i = 0;
+    for (const entry of pages[currentPage]) {
+        ns.print(`[${i}]${entry}`);
+        i++;
     }
-
-    if (unrootGroups.length > 0) {
-        ns.print(`Unroot [${unGroupSel + 1}/${unrootGroups.length}]`);
-        for (const entry of unrootGroups[unGroupSel]) ns.print(`${entry}\n`);
-    } else {
-        ns.print("(none)\n");
-    }
+    // ns.print(pages[currentPage].join("\n"));
 }
 
 function scan(ns: NS, start = "home"): ScannedServer[] {
@@ -178,18 +212,78 @@ function scanLite(ns: NS, servers: ScannedServer[], start = "home") {
     }
 }
 
-export async function main(ns: NS) {
-    /// Basic Module 7.10GB
-    // ns.ramOverride(7.2)
-    // if (9.35 <= ns.getServerMaxRam("home")) {
-    //     ns.tprint("Everything fits")
-    //     ns.ramOverride();
-    // } else {
-    //     ns.tprint("Running basic")
-    //     ns.ramOverride(7.10);
-    // }
+function manageProxies(ns:NS,servers:ScannedServer[]) {
+    const targets:ScannedServer[] = []
+    const proxies:ScannedServer[] = []
+    for (const server of servers) {
+        if (server.state === "USEPROXY") {
+            targets.push(server);
+        } else if (server.state === "PROXY") {
+            proxies.push(server);
+        }
+    }
+    for (const target of targets) {
+        let extras = 0;
+        if (target.paired == 0) {
+            for (const proxy of proxies) {
+                if (proxy.target === "N/A") {
+                    proxy.target = target.server.hostname;
+                    target.paired = 1;
+                    break;
+                }
+            }
+            if (target.paired == 0 && ns.ramOverride() >= 9.35) {
+                const prxName = `PRX`;
+                ns.cloud.purchaseServer(prxName,16);
+                extras++;
+            }
+        }
+    }
 
-    initTail(ns, "unBasic", 560, 450, 12);
+    for (const proxy of proxies) {
+        proxy.runSelf(ns)
+    }
+}
+
+function initRam(ns:NS) {
+    /// Basic Module 7.10GB
+    /// With Proxy Purchase: 9.35GB
+    /// Plus Page: +1.60GB
+    const homeRam = ns.getServerMaxRam("home")
+    if (9.35 <= homeRam - 1.65) {
+        ns.tprint(`Can run proxy automation and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page`)
+        ns.ramOverride(homeRam - 1.65);
+    } else {
+        ns.tprint("Running basic. No access to page system. Switch pages manually with: nano unBasic/cfg/page.txt")
+        ns.ramOverride(7.10);
+    }
+}
+
+function updateRam(ns:NS) {
+    const currentOverride = ns.ramOverride();
+    const homeRamBuffered = ns.getServerMaxRam("home") - 1.65;
+    if (currentOverride < homeRamBuffered) {
+        ns.ramOverride(homeRamBuffered);
+    }
+}
+
+function runServers(ns:NS,servers:ScannedServer[]) {
+    for (const server of servers) {
+        if (server.state === "USEPROXY") {
+            server.normalizeColor();
+            continue;
+        } else if (server.state === "PROXY") {
+            continue;
+        }
+        server.normalizeColor();
+        server.runSelf(ns);
+    }
+}
+
+export async function main(ns: NS) {
+    ns.ramOverride(7.10);
+    initRam(ns);
+    initTail(ns, "unBasic", 560, 600, 12);
     const servers = scan(ns, "home");
     const groupChangeInterval = 5;
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };
@@ -199,36 +293,26 @@ export async function main(ns: NS) {
     let lastTimeSource = Date.now();
 
     while (true) {
+        updateRam(ns)
         scanLite(ns, servers, "home");
         const now = Date.now();
         const dt = now - lastTimeSource;
         lastTimeSource = now;
 
         if (clockServer) clockServer.timeActive += dt;
-        const needProxy:ScannedServer[] = []
-        const isProxy:ScannedServer[] = []
-        for (const server of servers) {
-            if (server.state === "USEPROXY") {
-                needProxy.push(server);
-                continue;
-            } else if (server.state === "PROXY") {
-                isProxy.push(server);
-                continue;
-            }
-            server.normalizeColor();
-            server.runSelf(ns);
-        }
-        const pairCount = Math.min(needProxy.length, isProxy.length);
-        for (let i = 0;i < pairCount;i++) {
-            if (isProxy[i].target === "N/A") {
-                isProxy[i].target = needProxy[i].server.hostname
-            }
-        }
-        for (const prox of isProxy) {
-            prox.runSelf(ns)
-        }
-        
+        runServers(ns,servers);
+        // for (const server of servers) {
+        //     if (server.state === "USEPROXY") {
+        //         continue;
+        //     } else if (server.state === "PROXY") {
+        //         continue;
+        //     }
+        //     server.normalizeColor();
+        //     server.runSelf(ns);
+        // }
 
+        manageProxies(ns,servers);
+        
         ns.clearLog();
         display(ns, servers, groupChangeInterval, spinner, frame, dt);
         ns.ui.renderTail();
@@ -247,3 +331,4 @@ export async function main(ns: NS) {
         await ns.sleep(100);
     }
 }
+

@@ -16,7 +16,8 @@ export class ScannedServer {
     private actColor: { r: number; g: number; b: number };
     public timer = 0;
     private error: string | null = null;
-    public target: string = "N/A"
+    public target: string = "N/A";
+    public paired: number = 0;
 
     constructor(ns: NS, hostname: string, path: string[], port: number,state:string = "INIT") {
         this.server = ns.getServer(hostname);
@@ -110,9 +111,11 @@ export class ScannedServer {
             case "WEAK":
                 this.actColor = { r: 255, g: 100, b: 255 };
                 return;
+            case "PROXHACK":
             case "HACK":
                 this.actColor = { r: 0, g: 255, b: 255 };
                 return;
+            case "PROXGROW":
             case "GROW":
                 this.actColor = { r: 100, g: 255, b: 100 };
                 return;
