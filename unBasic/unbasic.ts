@@ -125,8 +125,6 @@ function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): 
     for (const server of unrootServers) unroot.push(server.output(ns, dt));
     for (const server of proxyServers) proxy.push(server.output(ns, dt));
 
-    // const rootGroups = makeGroup(root, limit * 1.5);
-    // const unrootGroups = makeGroup(unroot, limit / 2);
     return [root,unroot,proxy];
 }
 
@@ -138,9 +136,7 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
         UNROOT: groups[1],
         PROXY: groups[2]
     }
-    // const root = groups[0];
-    // const unroot = groups[1];
-    // const proxy = groups[2];
+
     const currentPage = page(ns);
 
     ns.clearLog();
@@ -152,7 +148,6 @@ function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, 
         ns.print(`[${i}]${entry}`);
         i++;
     }
-    // ns.print(pages[currentPage].join("\n"));
 }
 
 function scan(ns: NS, start = "home"): ScannedServer[] {
@@ -251,10 +246,10 @@ function initRam(ns:NS) {
     /// Plus Page: +1.60GB
     const homeRam = ns.getServerMaxRam("home")
     if (9.35 <= homeRam - 1.65) {
-        ns.tprint(`Can run proxy automation and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page`)
+        ns.tprint(`${colorize('Can run proxy automation and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page',0,255,100)}`)
         ns.ramOverride(homeRam - 1.65);
     } else {
-        ns.tprint("Running basic. No access to page system. Switch pages manually with: nano unBasic/cfg/page.txt")
+        ns.tprint(`${colorize('Running basic. No access to page system. Switch pages manually with: nano unBasic/cfg/page.txt.',255,100,50)}\n${colorize("WARNING: One line only. Allowed config text (CHOOSE ONE ONLY) [ROOT,UNROOT,PROXY]",255,20,20)}`)
         ns.ramOverride(7.10);
     }
 }
@@ -264,6 +259,9 @@ function updateRam(ns:NS) {
     const homeRamBuffered = ns.getServerMaxRam("home") - 1.65;
     if (currentOverride < homeRamBuffered) {
         ns.ramOverride(homeRamBuffered);
+        if (currentOverride < 8) {
+            ns.tprint(colorize("New Features Unlocked!\n-Proxies will purchase themselves. Eventually they'll also manage themselves, like upgrading ram and cores.",0,255,50))
+        }
     }
 }
 
@@ -293,7 +291,7 @@ export async function main(ns: NS) {
     let lastTimeSource = Date.now();
 
     while (true) {
-        updateRam(ns)
+        updateRam(ns);
         scanLite(ns, servers, "home");
         const now = Date.now();
         const dt = now - lastTimeSource;
@@ -301,15 +299,6 @@ export async function main(ns: NS) {
 
         if (clockServer) clockServer.timeActive += dt;
         runServers(ns,servers);
-        // for (const server of servers) {
-        //     if (server.state === "USEPROXY") {
-        //         continue;
-        //     } else if (server.state === "PROXY") {
-        //         continue;
-        //     }
-        //     server.normalizeColor();
-        //     server.runSelf(ns);
-        // }
 
         manageProxies(ns,servers);
         
