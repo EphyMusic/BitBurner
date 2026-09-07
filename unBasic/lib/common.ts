@@ -49,7 +49,7 @@ export function constructSpinner(seed = Math.random()) {
     return spinners[idx];
 }
 
-export function initTail(ns: NS, title: string, width: number, height: number, fontSize: number) {
+export function initTail(ns: NS, title?: string, width?: number, height?: number, fontSize?: number,et?:Function) {
     ns.disableLog("ALL");
     ns.ui.openTail();
     // await boot(ns);
@@ -57,9 +57,9 @@ export function initTail(ns: NS, title: string, width: number, height: number, f
     const [x, y] = ns.ui.windowSize();
     ns.ui.resizeTail(width ?? x / 7, height ?? y / 7);
     ns.ui.setTailFontSize(fontSize ?? 14);
-    ns.ui.moveTail(x - width, 0);
+    ns.ui.moveTail(x - (width ?? x / 7), 0);
     ns.ui.renderTail();
-    ns.atExit(() => exitTasks(ns));
+    ns.atExit(() => et ? et : exitTasks(ns));
 }
 
 function scan(ns: NS, start = "home"): string[] {

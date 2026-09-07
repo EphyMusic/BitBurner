@@ -500,3 +500,48 @@ export function bDoorWrite(ns: NS, servers: ScannedServer[]) {
     }
     if (fileContent !== ns.read("backdoors.txt")) ns.write("backdoors.txt", fileContent, "w");
 }
+
+
+///Save Stuff
+type SavedServer = {
+    hostname: string;
+    state: string;
+    target: string;
+    paired: number;
+    resetPort: number;
+}
+
+export class Save {
+    saveFile:string;
+
+    constructor(ns:NS,saveFile:string) {
+        this.saveFile = saveFile;
+    }
+
+    saveServers(ns:NS,servers:ScannedServer[]) {
+        const saved: SavedServer[] = servers.map((server) => ({
+            hostname:server.server.hostname,
+            state: server.state,
+            target:server.target,
+            paired:server.paired,
+            resetPort: server.resetPort
+        }))
+
+        ns.write(this.saveFile,JSON.stringify(saved),"w");
+    }
+    
+    loadServers(ns:NS): SavedServer[] {
+        if (!ns.fileExists(this.saveFile,"home")) {
+            ns.toast("Saved file missing. Reconstructing servers.","warning");
+            return [];
+        }
+
+        try {
+            ns.tprint("Loading servers...");
+            return JSON.parse(ns.read(this.saveFile)) as SavedServer[]
+        } catch {
+            ns.toast("Saved file invalid. Reconstructing servers.","warning");
+            return [];
+        }
+    }
+}

@@ -1,5 +1,5 @@
 // import { NS, Server } from "@ns";
-import { ScannedServer, bDoorWrite } from "./lib/server";
+import { ScannedServer, bDoorWrite, Save } from "./lib/server";
 import { colorize, initTail } from "./lib/common";
 
 type SpinnerInfo = {
@@ -128,7 +128,7 @@ function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): 
     return [root,unroot,proxy];
 }
 
-function display(ns: NS, servers: ScannedServer[], groupChangeInterval: number, spinner: SpinnerInfo, frame: number, dt: number) {
+function display(ns: NS, servers: ScannedServer[], spinner: SpinnerInfo, frame: number, dt: number) {
     const sprite = spinner.spinner;
     const groups = formatGroups(ns, servers, 10, dt);
     const pages = {
@@ -245,6 +245,8 @@ function initRam(ns:NS) {
     /// With Proxy Purchase: 9.35GB
     /// Plus Page: +1.60GB
     const homeRam = ns.getServerMaxRam("home")
+    ns.tprint(colorize("Booting unBasic...",0,255,255) + colorize("\nNote: If display is cut off, please go, in the bitburner menu, to Options -> System -> Netscript Log Size and set to 80+.",100,255,100));
+
     if (9.35 <= homeRam - 1.65) {
         ns.tprint(`${colorize('Can run proxy automation and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page',0,255,100)}`)
         ns.ramOverride(homeRam - 1.65);
@@ -278,18 +280,72 @@ function runServers(ns:NS,servers:ScannedServer[]) {
     }
 }
 
+function exitTasks(ns: NS,save:Save) {
+    const servers = scan(ns, "home");
+    ns.ui.closeTail();
+    for (const s of servers) {
+        if (s.server.hostname == "home") continue;
+        const procs = ns.ps(s.server.hostname);
+        if (procs.length > 0) {
+            ns.tprint(colorize(`Killing script on ${colorize(s.server.hostname, 0, 255, 255)}`, 150, 255, 100));
+            for (const proc of procs) {
+                ns.kill(proc.pid);
+            }
+        }
+    }
+    save.saveServers(ns,servers);
+    ns.tprint("Servers saved to " + save.saveFile)
+    ns.exit();
+}
+
+
 export async function main(ns: NS) {
     ns.ramOverride(7.10);
+    
+    ///Init
     initRam(ns);
-    initTail(ns, "unBasic", 560, 600, 12);
+    const saveFile = "/unBasic/cfg/state.json"
+    const saveSystem = new Save(ns,saveFile);
+    initTail(ns, "unBasic - Init", 200, 300, 12);
     const servers = scan(ns, "home");
-    const groupChangeInterval = 5;
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };
     let frame = 0;
     let cycles = 0;
     const clockServer = servers[0];
     let lastTimeSource = Date.now();
+    
+    ///Load Save if Possible
+    const saveState = new Map(saveSystem.loadServers(ns).map((saved) => [saved.hostname,saved]));
+    let remaining = servers.length
+    const output:string[] = []
+    ns.clearLog();
+    ns.print(`Loading ${remaining} servers...`);
+    ns.ui.renderTail();
+    for (const server of servers) {
+        const save = saveState.get(server.server.hostname);
+        if (!save) {
+            output.push(`${server.server.hostname} not found...`);
+            continue;
+        }
+        
+        server.state = save.state;
+        server.target = save.target;
+        server.paired = save.paired;
+        server.resetPort = save.resetPort;
+        await ns.sleep(500 * Math.random());
+        output.push(`Loaded ${server.server.hostname}...`);
+        remaining --;
+        ns.clearLog();
+        ns.print(`Loading ${remaining} servers...`);
+        ns.print(output.join("\n"));
+        ns.ui.renderTail();
+    }
+    ns.print(colorize("Server states loaded. Booting...",0,255,50));
+    ns.ui.renderTail();
+    ns.atExit(() => exitTasks(ns,saveSystem));
+    await ns.sleep(Math.max(1000,2000 * Math.random()))
 
+    ///Run
     while (true) {
         updateRam(ns);
         scanLite(ns, servers, "home");
@@ -303,7 +359,7 @@ export async function main(ns: NS) {
         manageProxies(ns,servers);
         
         ns.clearLog();
-        display(ns, servers, groupChangeInterval, spinner, frame, dt);
+        display(ns, servers, spinner, frame, dt);
         ns.ui.renderTail();
         bDoorWrite(ns, servers);
 
