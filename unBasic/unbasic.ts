@@ -246,7 +246,7 @@ function initRam(ns:NS) {
     /// Plus Page: +1.60GB
     const homeRam = ns.getServerMaxRam("home")
     ns.tprint(colorize("Booting unBasic...",0,255,255) + colorize("\nNote: If display is cut off, please go, in the bitburner menu, to Options -> System -> Netscript Log Size and set to 80+.",100,255,100));
-
+    if (ns.args.length > 0 && ns.args[0] === "--cleanup") return;
     if (9.35 <= homeRam - 1.65) {
         ns.tprint(`${colorize('Can run proxy automation and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page',0,255,100)}`)
         ns.ramOverride(homeRam - 1.65);
@@ -298,6 +298,21 @@ function exitTasks(ns: NS,save:Save) {
     ns.exit();
 }
 
+function cleanUp(ns:NS,servers:ScannedServer[]) {
+    const files = [
+        "/payload/hack.ts",
+        "/payload/grow.ts",
+        "/payload/weaken.ts",
+        "/payload/share.ts"
+    ];
+    for (const server of servers) {
+        for (const file of files) {
+            if (ns.fileExists(file,server.server.hostname)) {
+                ns.rm(file,server.server.hostname);
+            }
+        }
+    }
+}
 
 export async function main(ns: NS) {
     ns.ramOverride(7.10);
@@ -306,7 +321,6 @@ export async function main(ns: NS) {
     initRam(ns);
     const saveFile = "/unBasic/cfg/state.json"
     const saveSystem = new Save(ns,saveFile);
-    initTail(ns, "unBasic - Init", 200, 300, 12);
     const servers = scan(ns, "home");
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };
     let frame = 0;
@@ -314,6 +328,18 @@ export async function main(ns: NS) {
     const clockServer = servers[0];
     let lastTimeSource = Date.now();
     
+    ///Cleanup Check
+    if (ns.args.length > 0) {
+        if (ns.args[0] === "--cleanup") {
+            cleanUp(ns,servers);
+            ns.tprint(colorize("All server payload files cleaned up.",0,255,100));
+            ns.exit();
+        }
+    }
+    
+    ///Init Display
+    initTail(ns, "unBasic - Init", 200, 300, 12);
+
     ///Load Save if Possible
     const saveState = new Map(saveSystem.loadServers(ns).map((saved) => [saved.hostname,saved]));
     let remaining = servers.length
