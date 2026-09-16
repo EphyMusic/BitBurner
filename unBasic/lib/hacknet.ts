@@ -1,3 +1,5 @@
+import {colorize} from "./common"
+
 export function initTail(ns: NS, title: string, width: number, height: number, fontSize: number) {
     ns.disableLog("ALL");
     ns.ui.openTail();
@@ -45,18 +47,31 @@ export class HacknetNode {
 
 	output(ns:NS):string {
 		this.refreshStats(ns)
-		let output:string = `N:${this.idx}|L:${this.stats.level}|R:${this.stats.ram}|C:${this.stats.cores}`
-		if (this.stats.cache) output += `|Ch:${this.stats.cache}`;
-		if (this.stats.hashCapacity) output += `|Hc:${this.stats.hashCapacity}`;
-		if (this.stats.ramUsed) output += `|Ru:${this.stats.ramUsed}`;
-		output += `| $${ns.format.number(this.stats.production)}/s | $${ns.format.number(this.stats.totalProduction)} | ${ns.format.time(this.restTimer).replace("second","s").replace("ss","s").replace(" ","")}`
+		let output:string = "";
+		if (!(this.max.cores && this.max.ram && this.max.lv)){
+			output = `N:${this.idx}|L:${this.max.lv? colorize(String(this.stats.level),0,255,100): this.stats.level}|R:${this.max.ram ? colorize(String(this.stats.ram),0,255,100): this.stats.ram}|C:${this.max.cores ? colorize(String(this.stats.cores),0,255,100): this.stats.cores}`
+			if (this.stats.cache) output += `|Ch:${this.stats.cache}`;
+			if (this.stats.hashCapacity) output += `|Hc:${this.stats.hashCapacity}`;
+			if (this.stats.ramUsed) output += `|Ru:${this.stats.ramUsed}`;
+			output += `| $${ns.format.number(this.stats.production)}/s | $${ns.format.number(this.stats.totalProduction)} | ${ns.format.time(this.restTimer).replace("second","s").replace("ss","s").replace("minute","m").replaceAll(" ","")}`
+		} else {
+			output = `N:${this.idx}| ${colorize("MAX",0,255,100)} `
+			if (this.stats.cache) output += `|Ch:${this.stats.cache}`;
+			if (this.stats.hashCapacity) output += `|Hc:${this.stats.hashCapacity}`;
+			if (this.stats.ramUsed) output += `|Ru:${this.stats.ramUsed}`;
+			output += `| $${ns.format.number(this.stats.production)}/s | $${ns.format.number(this.stats.totalProduction)} | ${ns.format.time(this.restTimer).replace("second","s").replace("ss","s").replace("minute","m").replaceAll(" ","")}`
+		}
 		// output += `| $${ns.format.number(this.stats.production)}/s | $${ns.format.number(this.stats.totalProduction)} | ${this.restTimer}`
 		return output;
 	}
 
 	runSelf(ns:NS,num:number = 1) {
 		let upgraded = false;
-		if (this.max.ram && this.max.cores && this.max.lv) return;
+		if (this.max.ram && this.max.cores && this.max.lv) {
+			this.shouldRest = false;
+			this.restTimer = 0;
+			return;
+		};
 		if (this.shouldRest) return;
 		if (this.stats.ram < 64) {
 			if (this.buyRam(ns,num)) upgraded = true;
@@ -68,13 +83,13 @@ export class HacknetNode {
 		} else {
 			this.max.cores = true;
 		}
-		if (this.stats.cores < 200) {
+		if (this.stats.level < 200) {
 			if (this.buyLv(ns,num)) upgraded = true;
 		} else {
 			this.max.lv = true;
 		}
 		this.shouldRest = !upgraded;
-		if (this.shouldRest) this.restTimer = 30000 + ((Math.random() * 6000) - 2000);
+		if (this.shouldRest) this.restTimer = 60000 + ((Math.random() * 15000) - 2000);
 	}
 }
 
@@ -97,6 +112,28 @@ export async function initHacknet(ns: NS):Promise<HacknetNode[]> {
 	// 	for (let n = 0;n<tNodes;n++) nodes.push(new HacknetNode(ns,n));
 	// }
 	return nodes;
+}
+
+export function runHacknet(ns:NS, nodes:HacknetNode[],dt:number) {
+	const newNode:number = ns.hacknet.purchaseNode();
+	if (newNode !== -1) nodes.push(new HacknetNode(ns,newNode));
+	for (const node of nodes) {
+		if (node.shouldRest && node.restTimer > 0) {
+			node.restTimer = Math.max(node.restTimer - dt,0);
+		} else {
+			node.shouldRest = false;
+		}
+		node.runSelf(ns);
+	}
+}
+
+export function getProduction(ns:NS, nodes:HacknetNode[]):{perSecond:number,total:number} {
+	const info = {perSecond: 0, total:0};
+	for (const node of nodes) {
+		info.perSecond += node.stats.production;
+		info.total += node.stats.totalProduction;
+	}
+	return info;
 }
 
 export async function main(ns:NS) {

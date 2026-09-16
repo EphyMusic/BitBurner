@@ -18,6 +18,7 @@ export class ScannedServer {
     private error: string | null = null;
     public target: string = "N/A";
     public paired: number = 0;
+    public contracts: CodingContractObject[] = []
 
     constructor(ns: NS, hostname: string, path: string[], port: number,state:string = "INIT") {
         this.server = ns.getServer(hostname);
@@ -37,6 +38,21 @@ export class ScannedServer {
 
     growTime(ns: NS): number {
         return ns.getGrowTime(this.target !== "N/A"? this.target : this.server.hostname);
+    }
+
+    listContracts(ns:NS):string[]|void {
+        const contracts:string[] = ns.ls(this.server.hostname,".cct");
+        if (contracts.length > 0) {
+            return contracts;
+        }
+        return;
+    }
+
+    pushContracts(contracts:CodingContractObject[]) {
+        for (const contract of contracts) {
+            this.contracts.push(contract);
+        }
+        return;
     }
 
     weakTime(ns: NS): number {
@@ -143,6 +159,13 @@ export class ScannedServer {
             return this._crackPorts(ns) >= reqPorts && ns.nuke(this.server.hostname);
         }
         return false;
+    }
+
+    upgradeSelf(ns:NS) {
+        this.refreshServer(ns)
+        if (!this.server.purchasedByPlayer) return;
+        const cRam = this.server.maxRam
+        ns.cloud.upgradeServer(this.server.hostname,cRam * 2);
     }
 
     _crackPorts(ns: NS): number {
@@ -328,15 +351,15 @@ export class ScannedServer {
                 if (this.weakening) {
                     if (targSecCur !== targSecMin) {
                         if (this.alreadyRunning(ns,"/payload/weaken.ts")) return;
-                        this.doAction(ns,"payload/weaken.ts");
+                        this.doAction(ns,"/payload/weaken.ts");
                         return;
                     }
                     this.weakening = false;
                     return;
                 }
 
-                if (targMoneyCur !== maxMoney) {
-                    if (targSecCur !> targSecMin * 1.2) {
+                if (targMoneyCur !== targMoneyMax) {
+                    if (!(targSecCur > targSecMin * 1.2)) {
                         if (this.alreadyRunning(ns,"/payload/grow.ts")) return;
                         this.doAction(ns,"/payload/grow.ts");
                         return;
@@ -416,8 +439,8 @@ export class ScannedServer {
                     this.state = "INIT"
                 }
             
-
             default:
+                this.refreshServer(ns)
                 return;
         }
     }
@@ -477,8 +500,11 @@ export class ScannedServer {
         }
 
         if (!this.server.hasAdminRights) return output;
-        if (this.server.purchasedByPlayer) {
-            output+= colorize(` ---> ${this.target}`,255,255,100);
+        if (this.server.purchasedByPlayer && this.target !== "N/A") {
+            const targ = ns.getServer(this.target)
+            output+= colorize(` R: ${ns.format.ram(this.server.maxRam)} ---> ${this.target}`,255,255,100);
+            output += `\n$${ns.format.number(targ.moneyAvailable as number)}/${ns.format.number(targ.moneyMax as number)}`;
+            output += ` | ${ns.format.number(targ.hackDifficulty as number)}/${ns.format.number(targ.minDifficulty as number)}`;
             return output;
         }
 
@@ -522,8 +548,8 @@ export class Save {
         const saved: SavedServer[] = servers.map((server) => ({
             hostname:server.server.hostname,
             state: server.state,
-            target:server.target,
-            paired:server.paired,
+            target: server.target,
+            paired: server.paired,
             resetPort: server.resetPort
         }))
 
@@ -532,15 +558,15 @@ export class Save {
     
     loadServers(ns:NS): SavedServer[] {
         if (!ns.fileExists(this.saveFile,"home")) {
-            ns.toast("Saved file missing. Reconstructing servers.","warning");
+            ns.tprint("Saved file missing. Reconstructing servers.","warning");
             return [];
         }
 
         try {
-            ns.tprint("Loading servers...");
+            // ns.tprint("Loading servers...");
             return JSON.parse(ns.read(this.saveFile)) as SavedServer[]
         } catch {
-            ns.toast("Saved file invalid. Reconstructing servers.","warning");
+            ns.tprint("Saved file invalid. Reconstructing servers.");
             return [];
         }
     }

@@ -1,6 +1,7 @@
 // import { NS, Server } from "@ns";
 import { ScannedServer, bDoorWrite, Save } from "./lib/server";
 import { colorize, initTail } from "./lib/common";
+import { initHacknet, runHacknet, HacknetNode, getProduction} from "./lib/hacknet"
 
 type SpinnerInfo = {
     spinner: string[];
@@ -9,7 +10,7 @@ type SpinnerInfo = {
     b: number;
 };
 
-type PageEnum = "ROOT" | "UNROOT" | "PROXY";
+type PageEnum = "ROOT" | "UNROOT" | "PROXY" | "HNET";
 
 function page(ns: NS): PageEnum {
     const pageFile = "/unBasic/cfg/page.txt";
@@ -21,7 +22,7 @@ function page(ns: NS): PageEnum {
 
     const value = ns.read(pageFile).trim();
 
-    if (value === "ROOT" || value === "UNROOT" || value === "PROXY") {
+    if (value === "ROOT" || value === "UNROOT" || value === "PROXY" || value === "HNET") {
         return value;
     }
 
@@ -29,9 +30,9 @@ function page(ns: NS): PageEnum {
 }
 
 function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
-    let w:number;
-    let [x,_y] = ns.ui.windowSize();
-    let h = 50 + (Math.max(0,group.length - 1) * 19);
+    let w:number = 200;
+    let [x,y] = ns.ui.windowSize();
+    let h = Math.min(y,50 + Math.max(0,group.length - 1) * 19);
     let title = "unBasic"
 
     switch (true) {
@@ -49,16 +50,22 @@ function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
             title += " - Root";
             break;
         case "UNROOT":
-            w = 200;
+            w = 270;
             title += " - Unroot";
             break;
         case "PROXY":
-            w = 450;
+            w = 550;
+            h = h*2
             title += " - Proxy";
+            break;
+        case "HNET":
+            w = 450;
+            title += " - Hacknet";
             break;
     }
     x += -w;
     ns.ui.resizeTail(w,h);
+    ns.ui.setTailTitle(title);
     ns.ui.moveTail(x,0);
 }
 
@@ -132,21 +139,28 @@ function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): 
     return [root,unroot,proxy];
 }
 
-function display(ns: NS, servers: ScannedServer[], spinner: SpinnerInfo, frame: number, dt: number) {
+function display(ns: NS, servers: ScannedServer[], nodes:HacknetNode[], spinner: SpinnerInfo, frame: number, dt: number) {
     const sprite = spinner.spinner;
     const groups = formatGroups(ns, servers, 10, dt);
+    const nodeInfo = getProduction(ns,nodes);
+    const nodeGroup:string[] = []
+    for (const node of nodes) nodeGroup.push(node.output(ns));
     const pages = {
         ROOT: groups[0],
         UNROOT: groups[1],
-        PROXY: groups[2]
-    }
+        PROXY: groups[2],
+        HNET: nodeGroup
+    };
 
     const currentPage = page(ns);
 
     ns.clearLog();
     updateDisplay(ns,currentPage,pages[currentPage]);
     ns.print(`${colorize(sprite[frame], spinner.r, spinner.g, spinner.b)}`);
-    ns.print(`${currentPage}`);
+    // ns.print(`${currentPage}`);
+    if (currentPage == "HNET") {
+        ns.print("$" + ns.format.number(nodeInfo.perSecond) + "/s | $" + ns.format.number(nodeInfo.total))
+    }
     let i = 0;
     for (const entry of pages[currentPage]) {
         ns.print(`[${i}]${entry}`);
@@ -217,7 +231,7 @@ function manageProxies(ns:NS,servers:ScannedServer[]) {
     for (const server of servers) {
         if (server.state === "USEPROXY") {
             targets.push(server);
-        } else if (server.state === "PROXY") {
+        } else if (server.state === "PROXY" || server.state === "PROXGROW" || server.state === "PROXHACK") {
             proxies.push(server);
         }
     }
@@ -231,7 +245,7 @@ function manageProxies(ns:NS,servers:ScannedServer[]) {
                     break;
                 }
             }
-            if (target.paired == 0 && ns.ramOverride() >= 9.35) {
+            if (target.paired == 0 && ns.ramOverride() >= 9.60) {
                 const prxName = `PRX`;
                 ns.cloud.purchaseServer(prxName,16);
                 extras++;
@@ -240,33 +254,36 @@ function manageProxies(ns:NS,servers:ScannedServer[]) {
     }
 
     for (const proxy of proxies) {
-        proxy.runSelf(ns)
+        if (ns.ramOverride() >= 9.60) proxy.upgradeSelf(ns);
+        proxy.runSelf(ns);
     }
 }
 
-function initRam(ns:NS) {
+function initRam(ns:NS,tram:number) {
     /// Basic Module 7.10GB
-    /// With Proxy Purchase: 9.35GB
+    /// With Proxy Purchase/Upgrade: 9.60GB
+    /// With Hacknet: 13.25GB
     /// Plus Page: +1.60GB
+    /// Total: 14.85GB
     const homeRam = ns.getServerMaxRam("home")
     ns.tprint(colorize("Booting unBasic...",0,255,255) + colorize("\nNote: If display is cut off, please go, in the bitburner menu, to Options -> System -> Netscript Log Size and set to 80+.",100,255,100));
     if (ns.args.length > 0 && ns.args[0] === "--cleanup") return;
-    if (9.35 <= homeRam - 1.65) {
-        ns.tprint(`${colorize('Can run proxy automation and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page',0,255,100)}`)
-        ns.ramOverride(homeRam - 1.65);
+    if (tram <= homeRam - 1.65) {
+        ns.tprint(`${colorize('Can run proxy automation, hacknet automation, and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page | -h for Hacknet Page',0,255,100)}`)
+        ns.ramOverride(Math.min(tram,homeRam - 1.65));
     } else {
         ns.tprint(`${colorize('Running basic. No access to page system. Switch pages manually with: nano unBasic/cfg/page.txt.',255,200,50)}\n${colorize("WARNING: One line only. Allowed config text (CHOOSE ONE ONLY) [ROOT,UNROOT,PROXY]",255,20,20)}`)
         ns.ramOverride(7.10);
     }
 }
 
-function updateRam(ns:NS) {
-    const currentOverride = ns.ramOverride();
+function updateRam(ns:NS,tram:number) {
+    let currentOverride = ns.ramOverride();
     const homeRamBuffered = ns.getServerMaxRam("home") - 1.65;
-    if (currentOverride < homeRamBuffered) {
-        ns.ramOverride(homeRamBuffered);
+    if (currentOverride < Math.min(tram,homeRamBuffered)) {
+        currentOverride = ns.ramOverride(Math.min(tram,homeRamBuffered));
         if (currentOverride < 8) {
-            ns.tprint(colorize("New Features Unlocked!\n-Proxies will purchase themselves. Eventually they'll also manage themselves, like upgrading ram and cores.",0,255,50))
+            ns.tprint(colorize(`New Features Unlocked!\n-Proxies will purchase themselves. Eventually they'll also manage themselves, like upgrading ram and cores.\n-Hacknet Node Manager: automatically manages nodes.\n-Page system available: alias page="home;unBasic/lib/page.ts"\n    Use: -r for Root Page | -u for Unroot Page | -p for Proxy Page | -h for Hacknet Page`,0,255,50))
         }
     }
 }
@@ -320,12 +337,14 @@ function cleanUp(ns:NS,servers:ScannedServer[]) {
 
 export async function main(ns: NS) {
     ns.ramOverride(7.10);
-    
+    const TRAM = 13.25
     ///Init
-    initRam(ns);
+    ns.ui.clearTerminal();
+    initRam(ns,TRAM);
     const saveFile = "/unBasic/cfg/state.json"
     const saveSystem = new Save(ns,saveFile);
     const servers = scan(ns, "home");
+    const nodes = await initHacknet(ns);
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };
     let frame = 0;
     let cycles = 0;
@@ -358,7 +377,7 @@ export async function main(ns: NS) {
             continue;
         }
         
-        server.state = save.state;
+        // server.state = save.state;
         server.target = save.target;
         server.paired = save.paired;
         server.resetPort = save.resetPort;
@@ -377,7 +396,7 @@ export async function main(ns: NS) {
 
     ///Run
     while (true) {
-        updateRam(ns);
+        updateRam(ns,TRAM);
         scanLite(ns, servers, "home");
         const now = Date.now();
         const dt = now - lastTimeSource;
@@ -387,9 +406,11 @@ export async function main(ns: NS) {
         runServers(ns,servers);
 
         manageProxies(ns,servers);
+
+        if (ns.ramOverride() >= 13.25) runHacknet(ns,nodes,dt);
         
         ns.clearLog();
-        display(ns, servers, spinner, frame, dt);
+        display(ns, servers, nodes, spinner, frame, dt);
         ns.ui.renderTail();
         bDoorWrite(ns, servers);
 
