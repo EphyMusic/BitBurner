@@ -195,12 +195,12 @@ function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): 
     return [root,unroot,proxy];
 }
 
-function display(ns: NS, servers: ScannedServer[], nodes:HacknetNode[], spinner: SpinnerInfo, frame: number, dt: number) {
+function display(ns: NS, servers: ScannedServer[], nodes:HacknetNode[]|null, spinner: SpinnerInfo, frame: number, dt: number) {
     const sprite = spinner.spinner;
     const groups = formatGroups(ns, servers, 10, dt);
-    const nodeInfo = getProduction(ns,nodes);
+    const nodeInfo = getProduction(ns,nodes ?? []);
     const nodeGroup:string[] = []
-    for (const node of nodes) nodeGroup.push(node.output(ns));
+    if (nodes) for (const node of nodes) nodeGroup.push(node.output(ns));
     const pages = {
         ROOT: groups[0],
         UNROOT: groups[1],
@@ -407,7 +407,7 @@ export async function main(ns: NS) {
     const saveFile = "/unBasic/cfg/state.json"
     const saveSystem = new Save(ns,saveFile);
     const servers = scan(ns, "home");
-    const nodes = await initHacknet(ns);
+    const nodes = ns.ramOverride() >= 13.25 ? await initHacknet(ns) : null;
     const spinner: SpinnerInfo = { spinner: constructSpinner(), r: 15, g: 255, b: 255 };
     let frame = 0;
     let cycles = 0;
@@ -474,9 +474,9 @@ export async function main(ns: NS) {
         if (clockServer) clockServer.timeActive += dt;
         runServers(ns,servers);
 
-        manageProxies(ns,servers);
+        if (ns.ramOverride() >= 13.25) manageProxies(ns,servers);
 
-        if (ns.ramOverride() >= 13.25) runHacknet(ns,nodes,dt);
+        if (nodes) runHacknet(ns,nodes,dt);
 
         ns.clearLog();
         display(ns, servers, nodes, spinner, frame, dt);
