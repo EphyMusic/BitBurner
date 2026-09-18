@@ -3,6 +3,7 @@ import { ScannedServer, bDoorWrite, Save } from "./lib/server";
 import { colorize, initTail } from "./lib/common";
 import { initHacknet, runHacknet, HacknetNode, getProduction} from "./lib/hacknet"
 
+
 type SpinnerInfo = {
     spinner: string[];
     r: number;
@@ -27,6 +28,61 @@ function page(ns: NS): PageEnum {
     }
 
     return "ROOT";
+}
+
+function cmd(ns: NS,servers: ScannedServer[]) {
+    const cmdFile = "/unBasic/cfg/cmd.txt";
+    if (!ns.fileExists(cmdFile)) ns.write(cmdFile);
+    const cmdContent = ns.read(cmdFile).trim();
+    if (!cmdContent || cmdContent === "") return;
+    ns.write(cmdFile, "", "w");
+    const [command,hostname, property, value] = cmdContent.split("|");
+    for (const server of servers) {
+        if (server.server.hostname != hostname) continue;
+        switch(command) {
+            case "set":
+                if (!hostname || !property || !value) return;
+                if (property === "state" && (value === "HACK" || value === "GROW" || value === "USEPROXY")) {
+                    server.state = value;
+                    server.killOld(ns)
+                }
+                if (property === "target" && servers.some(s => s.server.hostname === value)) {
+                    server.target = value;
+                    server.killOld(ns);
+                }
+                break;
+            case "read":
+                if (!hostname) return;
+                if (property && property !== "all" && property !== "*" && property !== "ALL") {
+                    if (server[property]) {
+                        ns.tprint(colorize(`Server ${hostname} ${property}: ${server[property]}`,0,255,255));
+                    } else if (server.server[property]) {
+                        ns.tprint(colorize(`Server ${hostname} ${property}: ${server.server[property]}`,0,255,255));
+                    } else {
+                        ns.tprint(colorize(`Server ${hostname}.${property}: not found`,255,0,0) );
+                    }
+                } else if (!property || property === "all" || property === "*" || property === "ALL") {
+                    let output = "unBasic Properties:\n";
+                    for (const key in server) {
+                        if (server.hasOwnProperty(key)) {
+                            output += `${key}: ${String(server[key])}\n`;
+                        }
+                    }
+                    output += "\n-_-_-_-_-_-_-_\n\nServer Properties:\n";
+                    for (const key in server.server) {
+                        if (server.server.hasOwnProperty(key)) {
+                            output += `${key}: ${String(server.server[key])}\n`;
+                        }
+                    }
+                    ns.tprint(colorize(`Server ${hostname} info:\n${output}`,0,255,255));
+                }
+                break;
+
+            default:
+                return;
+        }
+    }
+    return;
 }
 
 function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
@@ -55,7 +111,7 @@ function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
             break;
         case "PROXY":
             w = 550;
-            h = h*2
+            h = h*1.7
             title += " - Proxy";
             break;
         case "HNET":
@@ -263,14 +319,19 @@ function initRam(ns:NS,tram:number) {
     /// Basic Module 7.10GB
     /// With Proxy Purchase/Upgrade: 9.60GB
     /// With Hacknet: 13.25GB
+    /// Plus Contracts: +15GB
     /// Plus Page: +1.60GB
-    /// Total: 14.85GB
+    /// Total: 14.85GB but 29.85GB if all features are considered
     const homeRam = ns.getServerMaxRam("home")
     ns.tprint(colorize("Booting unBasic...",0,255,255) + colorize("\nNote: If display is cut off, please go, in the bitburner menu, to Options -> System -> Netscript Log Size and set to 80+.",100,255,100));
     if (ns.args.length > 0 && ns.args[0] === "--cleanup") return;
     if (tram <= homeRam - 1.65) {
-        ns.tprint(`${colorize('Can run proxy automation, hacknet automation, and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page | -h for Hacknet Page',0,255,100)}`)
+        ns.tprint("ultimate unlock i don't wanna write this rn but we can do contracts now")
         ns.ramOverride(Math.min(tram,homeRam - 1.65));
+    } 
+    else if (14.85 <= homeRam - 1.65) {
+        ns.tprint(`${colorize('Can run proxy automation, hacknet automation, and page system with basic.\nPage system: alias page="home;unBasic/lib/page.ts"\nUse: -r for Root Page | -u for Unroot Page | -p for Proxy Page | -h for Hacknet Page',0,255,100)}`)
+        ns.ramOverride(Math.min(14.85,homeRam - 1.65));
     } else {
         ns.tprint(`${colorize('Running basic. No access to page system. Switch pages manually with: nano unBasic/cfg/page.txt.',255,200,50)}\n${colorize("WARNING: One line only. Allowed config text (CHOOSE ONE ONLY) [ROOT,UNROOT,PROXY]",255,20,20)}`)
         ns.ramOverride(7.10);
@@ -337,7 +398,9 @@ function cleanUp(ns:NS,servers:ScannedServer[]) {
 
 export async function main(ns: NS) {
     ns.ramOverride(7.10);
-    const TRAM = 13.25
+    let skip = false;
+    if (ns.args[0] && ns.args[0] == "--s") skip = true; 
+    const TRAM = 29.85;
     ///Init
     ns.ui.clearTerminal();
     initRam(ns,TRAM);
@@ -376,12 +439,17 @@ export async function main(ns: NS) {
             output.push(`${server.server.hostname} not found...`);
             continue;
         }
-        
-        // server.state = save.state;
+        if (server.server.hasAdminRights != save.rooted && server.server.hasAdminRights === false) {
+            ns.clearLog()
+            ns.print(colorize("Augmentations may have been installed, initiating a reset.\nWill reset server states.",255,100,50) + `\n Triggered by: ${server.server.hostname}`)
+            await ns.sleep(2000);
+            break;
+        }
+        server.state = save.state;
         server.target = save.target;
         server.paired = save.paired;
         server.resetPort = save.resetPort;
-        await ns.sleep(500 * Math.random());
+        if (!skip) await ns.sleep(500 * Math.random());
         output.push(`Loaded ${server.server.hostname}...`);
         remaining --;
         ns.clearLog();
@@ -392,11 +460,12 @@ export async function main(ns: NS) {
     ns.print(colorize("Server states loaded. Booting...",0,255,50));
     ns.ui.renderTail();
     ns.atExit(() => exitTasks(ns,saveSystem));
-    await ns.sleep(Math.max(1000,2000 * Math.random()))
+    if (!skip) await ns.sleep(Math.max(1000,2000 * Math.random()));
 
     ///Run
     while (true) {
         updateRam(ns,TRAM);
+        cmd(ns, servers);
         scanLite(ns, servers, "home");
         const now = Date.now();
         const dt = now - lastTimeSource;
@@ -408,7 +477,7 @@ export async function main(ns: NS) {
         manageProxies(ns,servers);
 
         if (ns.ramOverride() >= 13.25) runHacknet(ns,nodes,dt);
-        
+
         ns.clearLog();
         display(ns, servers, nodes, spinner, frame, dt);
         ns.ui.renderTail();

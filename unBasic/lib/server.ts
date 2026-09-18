@@ -18,7 +18,7 @@ export class ScannedServer {
     private error: string | null = null;
     public target: string = "N/A";
     public paired: number = 0;
-    public contracts: CodingContractObject[] = []
+    public contracts: CodingContractObject[]
 
     constructor(ns: NS, hostname: string, path: string[], port: number,state:string = "INIT") {
         this.server = ns.getServer(hostname);
@@ -34,6 +34,7 @@ export class ScannedServer {
         const sB = Math.random() * 255;
         this.servColor = { r: 150, g: 255, b: sB };
         this.actColor = { r: 255, g: 255, b: 255 };
+        this.contracts = this.getContracts(ns, this.listContracts(ns) ?? []);
     }
 
     growTime(ns: NS): number {
@@ -48,11 +49,32 @@ export class ScannedServer {
         return;
     }
 
-    pushContracts(contracts:CodingContractObject[]) {
+    getContracts(ns:NS,contracts:string[]) {
+        const converts:CodingContractObject[] = []
+        if (ns.ramOverride() < 29.85) return converts;
         for (const contract of contracts) {
-            this.contracts.push(contract);
+            converts.push(ns.codingcontract.getContract(contract,this.server.hostname));
         }
-        return;
+        return converts;   
+    }
+
+    private contractKey(contract: CodingContractObject): string {
+        return JSON.stringify({
+            type: contract.type,
+            data: contract.data,
+            description: contract.description,
+        });
+    }
+
+    addContracts(ns:NS,contracts:string[]) {
+        const newContracts = this.getContracts(ns,contracts);
+        const seen = new Set(this.contracts.map(contract => this.contractKey(contract)));
+        for (const contract of newContracts) {
+            const key = this.contractKey(contract);
+            if (seen.has(key)) continue;
+            this.contracts.push(contract);
+            seen.add(key);
+        }
     }
 
     weakTime(ns: NS): number {
@@ -100,28 +122,52 @@ export class ScannedServer {
             this.timeDown(dt);
         }
 
-        const currMoney = this.server.moneyAvailable ?? 0;
-        if (currMoney !== this.lastMon) {
-            if (currMoney > this.lastMon) {
-                this.monColor = { r: 0, g: 250, b: 5 };
-                this.lastMon = currMoney;
-            } else if (currMoney < this.lastMon) {
-                this.monColor = { r: 250, g: 0, b: 5 };
-                this.lastMon = currMoney;
+        if (!this.server.purchasedByPlayer) {
+            const currMoney = this.server.moneyAvailable ?? 0;
+            if (currMoney !== this.lastMon) {
+                if (currMoney > this.lastMon) {
+                    this.monColor = { r: 0, g: 250, b: 5 };
+                    this.lastMon = currMoney;
+                } else if (currMoney < this.lastMon) {
+                    this.monColor = { r: 250, g: 0, b: 5 };
+                    this.lastMon = currMoney;
+                }
+            }
+
+            const currSec = this.server.hackDifficulty ?? 0;
+            if (currSec !== this.lastSec) {
+                if (currSec > this.lastSec) {
+                    this.secColor = { r: 250, g: 0, b: 0 };
+                    this.lastSec = currSec;
+                } else if (currSec < this.lastSec) {
+                    this.secColor = { r: 0, g: 250, b: 0 };
+                    this.lastSec = currSec;
+                }
+            }
+        } else if (this.target !== "N/A") {
+            const server = ns.getServer(this.target);
+            const currMoney = server.moneyAvailable ?? 0;
+            if (currMoney !== this.lastMon) {
+                if (currMoney > this.lastMon) {
+                    this.monColor = { r: 0, g: 250, b: 5 };
+                    this.lastMon = currMoney;
+                } else if (currMoney < this.lastMon) {
+                    this.monColor = { r: 250, g: 0, b: 5 };
+                    this.lastMon = currMoney;
+                }
+            }
+
+            const currSec = server.hackDifficulty ?? 0;
+            if (currSec !== this.lastSec) {
+                if (currSec > this.lastSec) {
+                    this.secColor = { r: 250, g: 0, b: 0 };
+                    this.lastSec = currSec;
+                } else if (currSec < this.lastSec) {
+                    this.secColor = { r: 0, g: 250, b: 0 };
+                    this.lastSec = currSec;
+                }
             }
         }
-
-        const currSec = this.server.hackDifficulty ?? 0;
-        if (currSec !== this.lastSec) {
-            if (currSec > this.lastSec) {
-                this.secColor = { r: 250, g: 0, b: 0 };
-                this.lastSec = currSec;
-            } else if (currSec < this.lastSec) {
-                this.secColor = { r: 0, g: 250, b: 0 };
-                this.lastSec = currSec;
-            }
-        }
-
 
         switch (action) {
             case "WEAK":
@@ -259,7 +305,10 @@ export class ScannedServer {
         if (this.state == "SHARE" && this.server.hasAdminRights) return;
         if (this.server.purchasedByPlayer) {
             if (this.target !== "N/A") {
-                this.state = "PROXHACK";
+                const targServ = ns.getServer(this.target);
+                const targMoneyCur = targServ.moneyAvailable ?? 0;
+                const targMoneyMax = targServ.moneyMax ?? 0;
+                this.state = (targMoneyCur < targMoneyMax / 10) ? "PROXGROW" : "PROXHACK";
             } else {
                 this.state = "PROXY"
             }
@@ -286,6 +335,7 @@ export class ScannedServer {
             return;
         }
         this.runState(ns);
+        this.addContracts(ns, this.listContracts(ns) ?? []);
         return;
     }
 
@@ -433,11 +483,6 @@ export class ScannedServer {
             case "SHARE":
                 this.runShare(ns);
                 return;
-
-            case "PROXY":
-                if (this.target !== "N/A") {
-                    this.state = "INIT"
-                }
             
             default:
                 this.refreshServer(ns)
@@ -465,7 +510,7 @@ export class ScannedServer {
 
         output += colorize(`[${name}]: `, this.servColor.r, this.servColor.g, this.servColor.b);
         if (this.server.hasAdminRights) {
-            if (this.server.moneyMax && this.server.moneyAvailable && !this.server.purchasedByPlayer) {
+            if (this.server.moneyMax && !this.server.purchasedByPlayer) {
                 maxMoney = this.server.moneyMax as number;
                 currMoney = this.server.moneyAvailable as number;
                 output += colorize(`$${ns.format.number(currMoney, 2)}/$${ns.format.number(maxMoney, 2)} | `, this.monColor.r, this.monColor.g, this.monColor.b);
@@ -493,6 +538,7 @@ export class ScannedServer {
             } else {
                 output += colorize(action, this.actColor.r, this.actColor.g, this.actColor.b);
             }
+            
         } else if (this.server.requiredHackingSkill) {
             const reqHackLV = this.server.requiredHackingSkill;
             if (!this.canRoot(ns)) output += `${colorize(String(reqHackLV), 255, 255, 0)}`;
@@ -532,6 +578,7 @@ export function bDoorWrite(ns: NS, servers: ScannedServer[]) {
 type SavedServer = {
     hostname: string;
     state: string;
+    rooted: boolean;
     target: string;
     paired: number;
     resetPort: number;
@@ -548,6 +595,7 @@ export class Save {
         const saved: SavedServer[] = servers.map((server) => ({
             hostname:server.server.hostname,
             state: server.state,
+            rooted: server.server.hasAdminRights,
             target: server.target,
             paired: server.paired,
             resetPort: server.resetPort
