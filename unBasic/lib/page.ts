@@ -11,19 +11,15 @@ export async function main(ns: NS) {
 	switch (ns.args[0]) {
 		case "-r":
 			ns.write(page,"ROOT", "w");
-			// ns.tprint("Switched to Root Page");
 			ns.exit();
 		case "-u":
 			ns.write(page,"UNROOT", "w");
-			// ns.tprint("Switched to Unroot Page");
 			ns.exit();
 		case "-p":
 			ns.write(page,"PROXY", "w");
-			// ns.tprint("Switched to Proxy Page");
 			ns.exit();
 		case "-h":
 			ns.write(page,"HNET", "w");
-			// ns.tprint("Switched to Hacknet Page");
 			ns.exit();
 		case "--set":
 			const hostname = ns.args[1];
@@ -34,7 +30,6 @@ export async function main(ns: NS) {
 				ns.exit();
 			}
 			ns.write(cmd, `set|${hostname}|${property}|${value}`, "w");
-			// ns.tprint(`Set command issued for server: ${hostname}\nproperty: ${property}\nvalue: ${value}`);
 			ns.exit();
 		case "--read":
 			const readHostname = ns.args[1];
@@ -44,8 +39,6 @@ export async function main(ns: NS) {
 				ns.exit();
 			}
 			ns.write(cmd, `read|${readHostname}|${readProperty}`, "w");
-			// ns.tprint(`Read command issued for server: ${readHostname}\nproperty: ${readProperty}`);
-			// ns.tprint(ns.read(cmd))
 			ns.exit();
 		default:
 			ns.tprint(man);

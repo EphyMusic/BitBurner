@@ -1,6 +1,4 @@
-// import {NS} from "@ns"
-
-//Color utils
+// ANSI color helpers
 export function colorize(text: string, r: number, g: number, b: number) {
     return `${rgbToAnsiFg(r, g, b)}${text}${ANSI.reset}`;
 }
@@ -52,7 +50,6 @@ export function constructSpinner(seed = Math.random()) {
 export function initTail(ns: NS, title?: string, width?: number, height?: number, fontSize?: number,et?:Function) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    // await boot(ns);
     ns.ui.setTailTitle(title ?? "Test");
     const [x, y] = ns.ui.windowSize();
     ns.ui.resizeTail(width ?? x / 7, height ?? y / 7);
@@ -63,27 +60,22 @@ export function initTail(ns: NS, title?: string, width?: number, height?: number
 }
 
 function scan(ns: NS, start = "home"): string[] {
-    const visited = new Map<string, { sName: string; path: string[] }>();
+    const visited = new Set<string>();
 
-    function dfs(host: string, path: string[] = []) {
-        const fullPath = [...path, host];
-        visited.set(host, { sName: host, path: fullPath });
-
+    function dfs(host: string) {
+        visited.add(host);
         for (const next of ns.scan(host)) {
-            if (!visited.has(next)) {
-                dfs(next, fullPath);
-            }
+            if (!visited.has(next)) dfs(next);
         }
     }
 
     dfs(start);
 
     const servers: string[] = [];
-    for (const s of visited.keys()) {
-        const entry = visited.get(s)!;
-        if (entry.sName == "home") continue;
-        if (ns.getServer(entry.sName).isOnline !== undefined) continue;
-        servers.push(entry.sName);
+    for (const hostname of visited) {
+        if (hostname === "home") continue;
+        if (ns.getServer(hostname).isOnline !== undefined) continue;
+        servers.push(hostname);
     }
     return servers;
 }

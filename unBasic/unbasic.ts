@@ -1,7 +1,7 @@
 // import { NS, Server } from "@ns";
-import { ScannedServer, bDoorWrite, Save } from "./lib/server";
-import { colorize, initTail } from "./lib/common";
-import { initHacknet, runHacknet, HacknetNode, getProduction} from "./lib/hacknet"
+import { bDoorWrite, Save, ScannedServer } from "./lib/server";
+import { colorize, constructSpinner, initTail } from "./lib/common";
+import { getProduction, HacknetNode, initHacknet, runHacknet } from "./lib/hacknet";
 
 
 type SpinnerInfo = {
@@ -125,25 +125,7 @@ function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
     ns.ui.moveTail(x,0);
 }
 
-function constructSpinner(seed = Math.random()) {
-    const spinners = [
-        ["◴", "◷", "◶", "◵"],
-        ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▁"],
-        ["▉", "▊", "▋", "▌", "▍", "▎", "▏", "▎", "▍", "▌", "▋", "▊", "▉"],
-        ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"],
-        ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈", "⠈", "⠐", "⠠", "⢀", "⡀", "⠄", "⠂", "⠁"],
-        ["┤", "┘", "┴", "└", "├", "┌", "┬", "┐"],
-        ["▖", "▘", "▝", "▗"],
-        ["◢", "◣", "◤", "◥"],
-        ["◰", "◳", "◲", "◱"],
-        ["◐", "◓", "◑", "◒"]
-    ];
-    const s = Math.max(0, Math.min(0.999999, Number(seed) || 0));
-    const idx = Math.floor(s * spinners.length);
-    return spinners[idx];
-}
-
-function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): string[][] {
+function formatGroups(ns: NS, servers: ScannedServer[], dt: number): string[][] {
     const root: string[] = [];
     const unroot: string[] = [];
     const proxy: string[] = [];
@@ -197,7 +179,7 @@ function formatGroups(ns: NS, servers: ScannedServer[], limit = 5, dt: number): 
 
 function display(ns: NS, servers: ScannedServer[], nodes:HacknetNode[]|null, spinner: SpinnerInfo, frame: number, dt: number) {
     const sprite = spinner.spinner;
-    const groups = formatGroups(ns, servers, 10, dt);
+    const groups = formatGroups(ns, servers, dt);
     const nodeInfo = getProduction(ns,nodes ?? []);
     const nodeGroup:string[] = []
     if (nodes) for (const node of nodes) nodeGroup.push(node.output(ns));
@@ -224,60 +206,45 @@ function display(ns: NS, servers: ScannedServer[], nodes:HacknetNode[]|null, spi
     }
 }
 
-function scan(ns: NS, start = "home"): ScannedServer[] {
-    const visited = new Map<string, { sName: string; path: string[] }>();
+function scanPaths(ns: NS, start = "home"): Map<string, string[]> {
+    const paths = new Map<string, string[]>();
 
-    function dfs(host: string, path: string[] = []) {
+    function visit(host: string, path: string[] = []) {
         const fullPath = [...path, host];
-        visited.set(host, { sName: host, path: fullPath });
-
+        paths.set(host, fullPath);
         for (const next of ns.scan(host)) {
-            if (!visited.has(next)) dfs(next, fullPath);
+            if (!paths.has(next)) visit(next, fullPath);
         }
     }
 
-    dfs(start);
+    visit(start);
+    return paths;
+}
 
+function scan(ns: NS, start = "home"): ScannedServer[] {
     const servers: ScannedServer[] = [];
     let port = 1;
-    for (const entryName of visited.keys()) {
-        const entry = visited.get(entryName)!;
-        if (entry.sName === "home") continue;
-        if (ns.getServer(entry.sName).isOnline !== undefined) continue;
-        servers.push(new ScannedServer(ns, entry.sName, entry.path, port));
+    for (const [hostname, path] of scanPaths(ns, start)) {
+        if (hostname === "home") continue;
+        if (ns.getServer(hostname).isOnline !== undefined) continue;
+        servers.push(new ScannedServer(ns, hostname, path, port));
         port += 1;
     }
     return servers;
 }
 
 function scanLite(ns: NS, servers: ScannedServer[], start = "home") {
-    const visited = new Map<string, { sName: string; path: string[] }>();
-
-    function dfs(host: string, path: string[] = []) {
-        const fullPath = [...path, host];
-        visited.set(host, { sName: host, path: fullPath });
-        for (const next of ns.scan(host)) {
-            if (!visited.has(next)) dfs(next, fullPath);
-        }
-    }
-
-    dfs(start);
-
     let lastOldPort = 1;
     for (const server of servers) lastOldPort = Math.max(lastOldPort, server.resetPort);
 
     let port = lastOldPort + 1;
     const seen = new Set(servers.map(server => server.server.hostname));
 
-    for (const host of visited.keys()) {
+    for (const [host, path] of scanPaths(ns, start)) {
         if (host === "home" || seen.has(host)) continue;
-
-        const entry = visited.get(host);
-        if (entry) {
-            servers.push(new ScannedServer(ns, entry.sName, entry.path, port));
-            seen.add(entry.sName);
-            port += 2;
-        }
+        servers.push(new ScannedServer(ns, host, path, port));
+        seen.add(host);
+        port += 2;
     }
 }
 
@@ -292,7 +259,6 @@ function manageProxies(ns:NS,servers:ScannedServer[]) {
         }
     }
     for (const target of targets) {
-        let extras = 0;
         if (target.paired == 0) {
             for (const proxy of proxies) {
                 if (proxy.target === "N/A") {
@@ -304,7 +270,6 @@ function manageProxies(ns:NS,servers:ScannedServer[]) {
             if (target.paired == 0 && ns.ramOverride() >= 9.60) {
                 const prxName = `PRX`;
                 ns.cloud.purchaseServer(prxName,16);
-                extras++;
             }
         }
     }
@@ -326,7 +291,7 @@ function initRam(ns:NS,tram:number) {
     ns.tprint(colorize("Booting unBasic...",0,255,255) + colorize("\nNote: If display is cut off, please go, in the bitburner menu, to Options -> System -> Netscript Log Size and set to 80+.",100,255,100));
     if (ns.args.length > 0 && ns.args[0] === "--cleanup") return;
     if (tram <= homeRam - 1.65) {
-        ns.tprint("ultimate unlock i don't wanna write this rn but we can do contracts now")
+        ns.tprint(colorize("Contracts will now be completed. Not all contract possibilities have yet been coded for.",0,255,100))
         ns.ramOverride(Math.min(tram,homeRam - 1.65));
     } 
     else if (14.85 <= homeRam - 1.65) {
@@ -344,19 +309,14 @@ function updateRam(ns:NS,tram:number) {
     if (currentOverride < Math.min(tram,homeRamBuffered)) {
         currentOverride = ns.ramOverride(Math.min(tram,homeRamBuffered));
         if (currentOverride < 8) {
-            ns.tprint(colorize(`New Features Unlocked!\n-Proxies will purchase themselves. Eventually they'll also manage themselves, like upgrading ram and cores.\n-Hacknet Node Manager: automatically manages nodes.\n-Page system available: alias page="home;unBasic/lib/page.ts"\n    Use: -r for Root Page | -u for Unroot Page | -p for Proxy Page | -h for Hacknet Page`,0,255,50))
+            ns.tprint(colorize(`New Features Unlocked!\n-Proxies will purchase themselves. \n-Hacknet Node Manager: automatically manages nodes.\n-Page system available: alias page="home;unBasic/lib/page.ts"\n    Use: -r for Root Page | -u for Unroot Page | -p for Proxy Page | -h for Hacknet Page`,0,255,50))
         }
     }
 }
 
 function runServers(ns:NS,servers:ScannedServer[]) {
     for (const server of servers) {
-        if (server.state === "USEPROXY") {
-            server.normalizeColor();
-            continue;
-        } else if (server.state === "PROXY") {
-            continue;
-        }
+        if (server.state === "PROXY") continue;
         server.normalizeColor();
         server.runSelf(ns);
     }

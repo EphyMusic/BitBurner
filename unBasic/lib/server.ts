@@ -1,5 +1,7 @@
-// import { NS, Server } from "@ns";
 import { colorize } from "./common";
+import { runContract } from "./contract";
+
+type RGBColor = { r: number; g: number; b: number };
 
 export class ScannedServer {
     public server: Server;
@@ -10,17 +12,17 @@ export class ScannedServer {
     private lastSec: number;
     private lastMon: number;
     public resetPort: number;
-    private monColor: { r: number; g: number; b: number };
-    private secColor: { r: number; g: number; b: number };
-    private servColor: { r: number; g: number; b: number };
-    private actColor: { r: number; g: number; b: number };
+    private monColor: RGBColor;
+    private secColor: RGBColor;
+    private servColor: RGBColor;
+    private actColor: RGBColor;
     public timer = 0;
     private error: string | null = null;
     public target: string = "N/A";
     public paired: number = 0;
-    public contracts: CodingContractObject[]
+    public contracts: CodingContractObject[];
 
-    constructor(ns: NS, hostname: string, path: string[], port: number,state:string = "INIT") {
+    constructor(ns: NS, hostname: string, path: string[], port: number, state: string = "INIT") {
         this.server = ns.getServer(hostname);
         this.path = path;
         this.resetPort = port;
@@ -41,16 +43,16 @@ export class ScannedServer {
         return ns.getGrowTime(this.target !== "N/A"? this.target : this.server.hostname);
     }
 
-    listContracts(ns:NS):string[]|void {
-        const contracts:string[] = ns.ls(this.server.hostname,".cct");
+    listContracts(ns: NS): string[] | void {
+        const contracts: string[] = ns.ls(this.server.hostname, ".cct");
         if (contracts.length > 0) {
             return contracts;
         }
         return;
     }
 
-    getContracts(ns:NS,contracts:string[]) {
-        const converts:CodingContractObject[] = []
+    getContracts(ns: NS, contracts: string[]): CodingContractObject[] {
+        const converts: CodingContractObject[] = [];
         if (ns.ramOverride() < 29.85) return converts;
         for (const contract of contracts) {
             converts.push(ns.codingcontract.getContract(contract,this.server.hostname));
@@ -66,8 +68,9 @@ export class ScannedServer {
         });
     }
 
-    addContracts(ns:NS,contracts:string[]) {
+    addContracts(ns: NS, contracts: string[]): void {
         const newContracts = this.getContracts(ns,contracts);
+        if (newContracts.length === 0) return;
         const seen = new Set(this.contracts.map(contract => this.contractKey(contract)));
         for (const contract of newContracts) {
             const key = this.contractKey(contract);
@@ -214,7 +217,7 @@ export class ScannedServer {
         ns.cloud.upgradeServer(this.server.hostname,cRam * 2);
     }
 
-    _crackPorts(ns: NS): number {
+    private _crackPorts(ns: NS): number {
         const actions = [ns.brutessh, ns.ftpcrack, ns.relaysmtp, ns.httpworm, ns.sqlinject];
         let openPorts = 0;
         for (const action of actions) {
@@ -224,7 +227,7 @@ export class ScannedServer {
         return openPorts;
     }
 
-    _numPortsCanOpen(ns: NS): number {
+    private _numPortsCanOpen(ns: NS): number {
         let possible = 0;
         const progs = ["BruteSSH.exe", "FTPCrack.exe", "relaySMTP.exe", "HTTPWorm.exe", "SQLInject.exe"];
         for (const prog of progs) {
@@ -233,7 +236,7 @@ export class ScannedServer {
         return possible;
     }
 
-    _calculateThreads(ns: NS, script: string): number {
+    private _calculateThreads(ns: NS, script: string): number {
         const freeRam = this.server.maxRam - this.server.ramUsed;
         const scriptRam = ns.getScriptRam(script);
         return Math.max(0, Math.floor(freeRam / scriptRam));
@@ -298,8 +301,11 @@ export class ScannedServer {
     }
 
     initState(ns: NS) {
-        if (this.server.maxRam == 0 && this.server.hasAdminRights) {
+        if ((this.server.moneyMax !== 0 || this.server.moneyMax !== undefined) && this.server.maxRam == 0 && this.server.hasAdminRights) {
             this.state = "USEPROXY";
+            return;
+        } else if (this.server.maxRam === 0 && this.server.hasAdminRights && this.server.moneyMax === 0) {
+            this.state = "UNUSED";
             return;
         }
         if (this.state == "SHARE" && this.server.hasAdminRights) return;
@@ -314,7 +320,7 @@ export class ScannedServer {
             }
         } else if (!this.server.hasAdminRights) {
             this.state = "ROOT";
-        } else if (!this.server.moneyMax || this.server.moneyMax === 0) {
+        } else if ((!this.server.moneyMax || this.server.moneyMax === 0) && this.server.maxRam > 0) {
             this.state = "SHARE";
         } else {
             const money = this.server.moneyAvailable as number;
@@ -330,12 +336,17 @@ export class ScannedServer {
 
     runSelf(ns: NS): undefined | boolean {
         this.refreshServer(ns);
-        if (!this.sendFiles(ns)) {
+        if (this.server.hasAdminRights && !this.sendFiles(ns)) {
             this.error = "Cannot send files...";
             return;
         }
         this.runState(ns);
         this.addContracts(ns, this.listContracts(ns) ?? []);
+        for (let i = this.contracts.length - 1; i >= 0; i--) {
+            if (runContract(ns, this.contracts[i])) {
+                this.contracts.splice(i, 1);
+            }
+        }
         return;
     }
 
@@ -484,6 +495,7 @@ export class ScannedServer {
                 this.runShare(ns);
                 return;
             
+            case "USEPROXY":
             default:
                 this.refreshServer(ns)
                 return;
@@ -503,6 +515,7 @@ export class ScannedServer {
         let currMoney: number;
         let name = this.server.hostname;
         if (name.length > 8) name = name.slice(0, 5) + "...";
+        if (name.length < 8) name = name.padEnd(8, " ");
 
         let action = this.action(ns);
 
@@ -552,6 +565,8 @@ export class ScannedServer {
             output += `\n$${ns.format.number(targ.moneyAvailable as number)}/${ns.format.number(targ.moneyMax as number)}`;
             output += ` | ${ns.format.number(targ.hackDifficulty as number)}/${ns.format.number(targ.minDifficulty as number)}`;
             return output;
+        } else if (this.server.hasAdminRights && !this.server.purchasedByPlayer) {
+            output += "|c:" + this.contracts.length;
         }
 
         const bd = this.server.backdoorInstalled && this.server.backdoorInstalled;
