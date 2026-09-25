@@ -33,7 +33,7 @@ export async function main(ns: NS) {
 			ns.tprint(err.message);
 		}
 	} else {
-		ns.tprint("Files successfully downloaded.");
+		ns.tprint(`Files successfully downloaded.\nQuick start: alias start="home;unBasic/unbasic.ts"`);
 	}
 	ns.exit();
 }
