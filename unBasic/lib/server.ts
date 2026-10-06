@@ -343,8 +343,15 @@ export class ScannedServer {
         this.runState(ns);
         this.addContracts(ns, this.listContracts(ns) ?? []);
         for (let i = this.contracts.length - 1; i >= 0; i--) {
-            if (runContract(ns, this.contracts[i])) {
+            if (runContract(ns, this.contracts[i]) == true) {
                 this.contracts.splice(i, 1);
+            } else if (typeof runContract(ns, this.contracts[i]) === "string") {
+                const output = `${this.server.hostname}: ${runContract(ns, this.contracts[i])}\n`
+                const content = ns.read("/unBasic/logs/contracts.txt");
+                for (const line of content.split("\n")) {
+                    if (line.trim() === output.trim()) continue;
+                }
+                ns.write("/unBasic/logs/contracts.txt",output,"a");
             }
         }
         return;
