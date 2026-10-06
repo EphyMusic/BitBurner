@@ -1,29 +1,42 @@
 export class CloudServer {
-	server:Server;
+	readonly server:Server;
 	target:Server;
-	state:string;
-	lastState:string;
-	money:number;
-	security:number;
-	moneyMax:number;
-	securityMin:number;
+	readonly path:string[];
+	money = 0;
+	security = 0;
+	moneyMax = 0;
+	securityMin = 0;
 
-	constructor(ns:NS, host:string, target:string) {
-		this.server = ns.getServer(host) as Server;
-		this.target = ns.getServer(target) as Server;
-		this.state = "INIT";
-		this.lastState = "INIT";
-		this.money = this.target.moneyAvailable? this.target.moneyAvailable : 0;
-		this.security = this.target.hackDifficulty? this.target.hackDifficulty : 0;
-		this.moneyMax = this.target.moneyMax? this.target.moneyMax : 0;
-		this.securityMin = this.target.minDifficulty? this.target.minDifficulty : 0;	
+	private constructor(server:Server, target:Server, path:string[]) {
+		this.server = server;
+		this.target = target;
+		this.path = path;
+		this.refresh();
+	}
+
+	static create(ns:NS, host:string, target:string, path:string[]): CloudServer | null {
+		const hostname = ns.serverExists(host) ? host : ns.cloud.purchaseServer(host, 8);
+		if (hostname == "") return null;
+		return new CloudServer(ns.getServer(hostname), ns.getServer(target), path);
+	}
+
+	private refresh() {
+		this.money = this.target.moneyAvailable ?? 0;
+		this.security = this.target.hackDifficulty ?? 0;
+		this.moneyMax = this.target.moneyMax ?? 0;
+		this.securityMin = this.target.minDifficulty ?? 0;
+	}
+
+	updateValues(ns:NS) {
+		this.target = ns.getServer(this.target.hostname);
+		this.refresh();
 	}
 	
-	calculateThreads(ns:NS) {
-		switch(this.state) {
+	calculateThreads(ns:NS, state:string) {
+		switch(state) {
 			case "HACK":
 				const hackTime = ns.getHackTime(this.target.hostname);
-				const fullHackThread = ns.hackAnalyzeThreads(this.target.hostname, this.money);
+				const fullHackThread = ns.hackAnalyzeThreads(this.target.hostname, this.moneyMax - this.money);
 				return {time: hackTime, threads: fullHackThread};
 			case "GROW":
 				const growTime = ns.getGrowTime(this.target.hostname);
@@ -74,36 +87,6 @@ export class CloudServer {
         return true;
     }
 
-	runState(ns:NS) {
-		switch(this.state) {
-			case "INIT":
-				if (!this.target.moneyAvailable || this.moneyMax == 0) {
-					this.state = "SHARE";
-					return;
-				} else {
-					if (this.money < this.moneyMax / 10) {
-						this.state = "GROW";
-					} else if (this.security > this.securityMin * 1.2) {
-						this.state = "WEAKEN";
-					} else {
-						this.state = "HACK";
-					}
-				}
-				return;
-			
-			case "SHARE":
-				// Implement the logic for the SHARE state here
-				return;
-			case "HACK":
-				// Implement the logic for the HACK state here
-				break;
-			case "GROW":
-				// Implement the logic for the GROW state here
-				break;
-			case "WEAKEN":
-				// Implement the logic for the WEAKEN state here
-				break;
-		}
-	}
+
 }
 
