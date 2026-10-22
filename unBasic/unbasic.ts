@@ -18,7 +18,7 @@ function asRecord(obj: object): Record<string, unknown> {
     return obj as Record<string, unknown>;
 }
 
-function page(ns: NS): PageEnum {
+function page(ns:NS): PageEnum {
     const pageFile = "/unBasic/cfg/page.txt";
 
     if (!ns.fileExists(pageFile)) {
@@ -35,7 +35,7 @@ function page(ns: NS): PageEnum {
     return "ROOT";
 }
 
-function cmd(ns: NS,servers: ScannedServer[]) {
+function cmd(ns:NS,servers:ScannedServer[]) {
     const cmdFile = "/unBasic/cfg/cmd.txt";
     if (!ns.fileExists(cmdFile)) ns.write(cmdFile);
     const cmdContent = ns.read(cmdFile).trim();
@@ -145,7 +145,7 @@ function updateDisplay(ns:NS,page:PageEnum,group:string[]) {
     ns.ui.moveTail(x,0);
 }
 
-function formatGroups(ns: NS, servers: ScannedServer[], dt: number): string[][] {
+function formatGroups(ns:NS,servers:ScannedServer[],dt:number): string[][] {
     const root: string[] = [];
     const unroot: string[] = [];
     const proxy: string[] = [];
@@ -197,7 +197,7 @@ function formatGroups(ns: NS, servers: ScannedServer[], dt: number): string[][] 
     return [root,unroot,proxy];
 }
 
-function display(ns: NS, servers: ScannedServer[], nodes:HacknetNode[]|null, spinner: SpinnerInfo, frame: number, dt: number) {
+function display(ns:NS,servers:ScannedServer[],nodes:HacknetNode[]|null,spinner:SpinnerInfo,frame:number,dt:number) {
     const sprite = spinner.spinner;
     const groups = formatGroups(ns, servers, dt);
     const nodeInfo = getProduction(ns,nodes ?? []);
@@ -226,7 +226,7 @@ function display(ns: NS, servers: ScannedServer[], nodes:HacknetNode[]|null, spi
     }
 }
 
-function scanPaths(ns: NS, start = "home"): Map<string, string[]> {
+function scanPaths(ns:NS,start="home"): Map<string,string[]> {
     const paths = new Map<string, string[]>();
 
     function visit(host: string, path: string[] = []) {
@@ -241,7 +241,41 @@ function scanPaths(ns: NS, start = "home"): Map<string, string[]> {
     return paths;
 }
 
-function scan(ns: NS, start = "home"): ScannedServer[] {
+function archiveLogs(ns:NS) {
+    const now = new Date();
+    const timeZone = "America/Los_Angeles";
+    const dateParts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(now);
+    const year = dateParts.find((part) => part.type === "year")?.value;
+    const month = dateParts.find((part) => part.type === "month")?.value;
+    const day = dateParts.find((part) => part.type === "day")?.value;
+    if (!year || !month || !day) {
+        throw new Error("Unable to format the archive date.");
+    }
+    const datePart = `${year}-${month}-${day}`;
+    const timePart = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+    })
+        .format(now)
+        .replace(/:/g, "-")
+        .replace(/\s/g, "");
+    for (let log of ns.ls("home","/unBasic/logs/")) {
+        log = log.replace("/unBasic/logs/","");
+        ns.tprint(`Processing log: ${log}`)
+        const newLog = `unBasic/logs/archive/${datePart}/${timePart}-${log}`
+        ns.mv("home",`unBasic/logs/${log}`, newLog)
+        ns.tprint(`Archived ${log} to ${newLog}`)
+    }
+}
+
+function scan(ns:NS,start="home"): ScannedServer[] {
     const servers: ScannedServer[] = [];
     let port = 1;
     for (const [hostname, path] of scanPaths(ns, start)) {
@@ -253,7 +287,7 @@ function scan(ns: NS, start = "home"): ScannedServer[] {
     return servers;
 }
 
-function scanLite(ns: NS, servers: ScannedServer[], start = "home") {
+function scanLite(ns:NS,servers:ScannedServer[],start="home") {
     let lastOldPort = 1;
     for (const server of servers) lastOldPort = Math.max(lastOldPort, server.resetPort);
 
@@ -346,7 +380,7 @@ function runServers(ns:NS,servers:ScannedServer[]) {
     }
 }
 
-function exitTasks(ns: NS,save:Save) {
+function exitTasks(ns:NS,save:Save) {
     const servers = scan(ns, "home");
     ns.ui.closeTail();
     for (const s of servers) {
@@ -361,6 +395,7 @@ function exitTasks(ns: NS,save:Save) {
     }
     save.saveServers(ns,servers);
     ns.tprint("Servers saved to " + save.saveFile)
+    archiveLogs(ns)
     ns.exit();
 }
 
