@@ -9,7 +9,10 @@ import { exitTasks } from "./lib/Cleanup";
 export async function main(ns: NS): Promise<void> {
 	// ns.ramOverride(1.65)
 	ns.atExit(exitTasks);
-	ns.disableLog("sleep");
+	ns.disableLog("ALL");
+	ns.clearLog();
+	ns.ui.openTail();
+	ns.ui.resizeTail(300,40)
 	const city = new CityScape(ns);
 	while (await city.tick(250)) { /* sync happens inside tick */ }
 }
