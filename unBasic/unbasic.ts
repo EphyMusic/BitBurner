@@ -267,7 +267,7 @@ function archiveLogs(ns:NS) {
         .replace(/:/g, "-")
         .replace(/\s/g, "");
     for (let log of ns.ls("home","/unBasic/logs/")) {
-        log = log.replace("/unBasic/logs/","");
+        log = log.replace("unBasic/logs/","");
         ns.tprint(`Processing log: ${log}`)
         const newLog = `unBasic/logs/archive/${datePart}/${timePart}-${log}`
         ns.mv("home",`unBasic/logs/${log}`, newLog)

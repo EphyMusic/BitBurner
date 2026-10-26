@@ -70,8 +70,8 @@ function submitAnswer(ns: NS, contract: CodingContractObject, answer: number | s
         // Array answers must stay arrays; String(arr) comma-joins them and never matches.
         const reward = contract.submit(Array.isArray(answer) ? (answer as never) : String(answer));
         if (reward !== "") {
-            ns.toast(`Solved contract ${contract.type} for ${reward}`, "success", 1000);
-            ns.write("/unBasic/logs/rewards.txt", `Solved contract ${contract.type} for ${reward}\n`, "a");
+            ns.toast(`Solved contract ${contract.type}. ${reward}.`, "success", 1000);
+            ns.write("/unBasic/logs/rewards.txt", `Solved contract ${contract.type}. ${reward}.\n`, "a");
             return true;
         } else {
             ns.toast(`Failed attempt ${attempt + 1} for contract ${contract.type}`, "error", 1000);
