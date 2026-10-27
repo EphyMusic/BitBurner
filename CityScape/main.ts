@@ -12,7 +12,8 @@ export async function main(ns: NS): Promise<void> {
 	ns.disableLog("ALL");
 	ns.clearLog();
 	ns.ui.openTail();
-	ns.ui.resizeTail(300,40)
+	ns.ui.resizeTail(250,35)
+	ns.ui.setTailMinimized(true);
 	const city = new CityScape(ns);
-	while (await city.tick(250)) { /* sync happens inside tick */ }
+	while (await city.tick(200)) { /* sync happens inside tick */ }
 }

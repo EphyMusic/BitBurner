@@ -26,6 +26,8 @@ export interface Rect {
 export interface LabelHandlers {
 	option(index: number): void;
 	collapse(): void;
+	/** The pointer is over option `index`, or -1 when it left. */
+	optionHover(index: number): void;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -44,6 +46,11 @@ export class Label {
 	private list: HTMLElement;
 	private notesEl: HTMLElement;
 	private notesKey = "";
+	private tipEl: HTMLElement;
+	private tipKey = "";
+	private tipIdx = -1;
+	private lastWidth = 0;
+	private lastHeight = 0;
 	private svg: SVGSVGElement;
 	private line: SVGPolylineElement;
 	private dot: SVGCircleElement;
@@ -93,8 +100,51 @@ export class Label {
 		Object.assign(this.nameEl.style, { fontSize: "15px", fontWeight: "bold", letterSpacing: "0.5px", textTransform: "uppercase" });
 		Object.assign(this.kindEl.style, { fontSize: "11px", marginTop: "2px", opacity: "0.85" });
 
-		parent.append(this.svg, this.card);
+		this.tipEl = doc.createElement("div");
+		Object.assign(this.tipEl.style, {
+			position: "absolute", display: "none", pointerEvents: "none", padding: "6px 10px", maxWidth: "320px",
+			boxSizing: "border-box", boxShadow: "0 4px 14px rgba(0,0,0,0.5)", fontSize: "12px", lineHeight: "1.35",
+			whiteSpace: "normal", overflowWrap: "anywhere",
+		});
+
+		parent.append(this.svg, this.card, this.tipEl);
 		this.setTheme(theme);
+	}
+
+	/**
+	 * Secondary card beside the main one, for the game's own tooltip on option `index`. `content` is a
+	 * detached copy of the tooltip; `key` identifies it so unchanged content isn't rebuilt. Null clears it.
+	 */
+	setTip(index: number, content: Node | null, key: string): void {
+		if (!content) {
+			this.tipIdx = -1;
+			this.tipKey = "";
+			this.tipEl.style.display = "none";
+			return;
+		}
+		if (key !== this.tipKey) {
+			this.tipKey = key;
+			this.tipEl.textContent = "";
+			this.tipEl.append(content);
+		}
+		this.tipIdx = index;
+		this.tipEl.style.display = "block";
+		this.placeTip();
+	}
+
+	private placeTip(): void {
+		const opt = this.optionEls[this.tipIdx];
+		if (!opt || !this.shown || this.tipEl.style.display === "none") return;
+		const c = this.card.getBoundingClientRect();
+		const o = opt.getBoundingClientRect();
+		const w = this.tipEl.offsetWidth;
+		const gap = 8;
+		const right = this.card.offsetLeft + this.card.offsetWidth + gap;
+		const left = right + w <= this.lastWidth - MARGIN ? right : Math.max(MARGIN, this.card.offsetLeft - gap - w);
+		const top = this.card.offsetTop + (o.top - c.top);
+		const maxTop = Math.max(MARGIN, this.lastHeight - this.tipEl.offsetHeight - MARGIN);
+		this.tipEl.style.left = `${left}px`;
+		this.tipEl.style.top = `${Math.min(Math.max(MARGIN, top), maxTop)}px`;
 	}
 
 	setTheme(t: LabelTheme): void {
@@ -104,6 +154,7 @@ export class Label {
 			color: t.primary, fontFamily: t.fontFamily,
 		});
 		this.kindEl.style.color = t.secondary;
+		Object.assign(this.tipEl.style, { background: t.background, border: `1px solid ${t.border}`, borderLeft: `3px solid ${t.secondary}`, color: t.primary, fontFamily: t.fontFamily });
 		this.line.setAttribute("stroke", t.primary);
 		this.dot.setAttribute("fill", t.primary);
 		this.renderList();
@@ -177,17 +228,22 @@ export class Label {
 		this.line.setAttribute("points", `${ax},${ay} ${ax},${elbow} ${joinX},${edge}`);
 		this.dot.setAttribute("cx", String(ax));
 		this.dot.setAttribute("cy", String(ay));
+		this.lastWidth = width;
+		this.lastHeight = height;
+		this.placeTip();
 	}
 
 	/** Hides the card without changing pinned state. */
 	hide(): void {
 		this.setShown(false);
+		this.tipEl.style.display = "none";
 	}
 
 	/** Highlights option `i` (-1 for none) like a hover, surviving re-renders of the list. */
 	highlight(i: number): void {
 		this.lit = i;
 		this.optionEls.forEach((el, k) => { el.style.background = k === i ? this.theme.buttonHover : this.theme.button; });
+		this.handlers.optionHover(i);
 	}
 
 	/** Viewport rect of an option, clipped to the visible part of the list. Null if hidden or scrolled out. */
@@ -234,6 +290,10 @@ export class Label {
 				el.addEventListener("mouseenter", () => { el.style.background = t.buttonHover; });
 				el.addEventListener("mouseleave", () => { el.style.background = t.button; });
 				el.addEventListener("click", () => this.handlers.option(i));
+			}
+			if (!o.trusted) {
+				el.addEventListener("mouseenter", () => this.handlers.optionHover(i));
+				el.addEventListener("mouseleave", () => this.handlers.optionHover(-1));
 			}
 			this.optionEls.push(el);
 			this.list.append(el);

@@ -54,6 +54,9 @@ export class CityScape {
 	private proxied = new Map<HTMLElement, string>();
 	private proxyListeners = new Map<HTMLElement, [() => void, () => void]>();
 	private optionsKey = "";
+	private hoverOpt = -1;
+	private fakeHover: HTMLElement | null = null;
+	private tipKey = "";
 	private themeKey = "";
 	private closed = false;
 	private failure: Error | null = null;
@@ -74,6 +77,7 @@ export class CityScape {
 			close: () => this.close(),
 			option: i => this.onOption(i),
 			collapse: () => this.collapse(),
+			optionHover: i => this.setOptionHover(i),
 		}, this.readTheme());
 		this.renderer = new Renderer(this.overlay.canvas);
 		onExit(() => this.close());
@@ -197,6 +201,7 @@ export class CityScape {
 	}
 
 	private dropPin(): void {
+		this.setOptionHover(-1);
 		this.releaseProxies();
 		if (!this.pin) return;
 		this.pin = null;
@@ -270,6 +275,40 @@ export class CityScape {
 		for (const el of Array.from(this.proxied.keys())) this.unproxy(el);
 	}
 
+	/**
+	 * Hovering a card option mirrors the pointer onto the game's real button so its tooltip opens; the frame
+	 * loop then copies that tooltip into the secondary card. Trusted options already get the real pointer.
+	 */
+	private setOptionHover(i: number): void {
+		if (i === this.hoverOpt) return;
+		if (this.fakeHover) {
+			this.dom.hoverOption(this.fakeHover, false);
+			this.fakeHover = null;
+		}
+		this.hoverOpt = i;
+		this.tipKey = "";
+		this.overlay.setTip(-1, null, "");
+		const el = this.real[i];
+		if (i >= 0 && el?.isConnected && !this.options[i]?.trusted) {
+			this.dom.hoverOption(el, true);
+			this.fakeHover = el;
+		}
+	}
+
+	private syncTip(): void {
+		if (!this.pin || this.hoverOpt < 0) return;
+		const t = this.dom.tooltip(this.tipKey);
+		if (!t) {
+			if (this.tipKey) this.overlay.setTip(-1, null, "");
+			this.tipKey = "";
+			return;
+		}
+		if (t.node) {
+			this.tipKey = t.key;
+			this.overlay.setTip(this.hoverOpt, t.node, t.key);
+		}
+	}
+
 	private onOption(i: number): void {
 		this.guard(() => {
 			const o = this.options[i];
@@ -309,6 +348,7 @@ export class CityScape {
 				const aspect = this.renderer.resize();
 				const vp = this.camera.viewProjection(aspect);
 				this.syncProxies();
+				this.syncTip();
 				if (this.pin?.opened) {
 					const text = this.dom.locationText();
 					if (text) this.overlay.setPageText(text.title, text.notes);

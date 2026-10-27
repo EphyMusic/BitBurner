@@ -125,6 +125,35 @@ export class CityDom {
 		return { title, notes };
 	}
 
+	/**
+	 * Fakes the pointer entering (or leaving) an option's real button so the game shows (or closes) its own
+	 * tooltip. For a disabled button, which gets no events, its wrapper is used instead.
+	 */
+	hoverOption(el: HTMLElement, on: boolean): void {
+		const target = el.matches(":disabled") && el.parentElement ? el.parentElement : el;
+		const init = { bubbles: true, cancelable: true, view: this.doc.defaultView, relatedTarget: on ? null : this.doc.body };
+		const View = (this.doc.defaultView as any) ?? {};
+		const Mouse = View.MouseEvent ?? MouseEvent;
+		target.dispatchEvent(new Mouse(on ? "mouseover" : "mouseout", init));
+	}
+
+	/** The game's open tooltip (hidden from view, since we show our own). `node` is a detached copy, null if `key` equals `prevKey`. */
+	tooltip(prevKey: string): { node: HTMLElement | null; key: string } | null {
+		const all = Array.from(this.doc.querySelectorAll<HTMLElement>('[role="tooltip"]'));
+		const pop = all[all.length - 1];
+		if (!pop || !clean(pop.textContent)) return null;
+		pop.style.visibility = "hidden";
+		pop.style.pointerEvents = "none";
+		const key = pop.innerHTML;
+		if (key === prevKey) return { node: null, key };
+		const node = pop.cloneNode(true) as HTMLElement;
+		node.removeAttribute("id");
+		node.removeAttribute("role");
+		node.removeAttribute("style");
+		node.querySelectorAll("[id]").forEach(e => e.removeAttribute("id"));
+		return { node, key };
+	}
+
 	restore(): void {
 		for (const [el, prev] of this.saved) el.style.visibility = prev;
 		this.saved.clear();

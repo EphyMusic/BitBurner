@@ -15,6 +15,8 @@ export interface OverlayHandlers {
 	option(index: number): void;
 	/** The pinned card's close button was clicked. */
 	collapse(): void;
+	/** The pointer entered option `index` of the pinned card, or -1 when it left. */
+	optionHover(index: number): void;
 }
 
 export interface OverlayRect {
@@ -72,7 +74,7 @@ export class Overlay {
 		this.closeBtn.addEventListener("click", () => handlers.close());
 
 		this.host.append(this.canvas, this.title, this.hint, this.closeBtn);
-		this.label = new Label(doc, this.host, theme, { option: i => handlers.option(i), collapse: () => handlers.collapse() });
+		this.label = new Label(doc, this.host, theme, { option: i => handlers.option(i), collapse: () => handlers.collapse(), optionHover: i => handlers.optionHover(i) });
 		doc.body.appendChild(this.host);
 		this.setTheme(theme);
 	}
@@ -118,6 +120,11 @@ export class Overlay {
 	setPageText(title: string, notes: string[]): void {
 		this.label.setName(title);
 		this.label.setNotes(notes);
+	}
+
+	/** Shows the game's tooltip copy beside the pinned card. */
+	setTip(index: number, content: Node | null, key: string): void {
+		this.label.setTip(index, content, key);
 	}
 
 	optionRect(i: number): Rect | null {
