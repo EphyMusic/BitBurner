@@ -7,8 +7,9 @@ export function onExit(task: () => void): void {
 }
 
 /** Pass this to ns.atExit once per script. Runs queued tasks in reverse order, then clears them. */
-export function exitTasks(): void {
+export function exitTasks(ns:NS): void {
 	while (exitList.length) {
 		try { exitList.pop()!(); } catch { /* keep going so one failure doesn't block the rest */ }
 	}
+	ns.ui.closeTail();
 }
