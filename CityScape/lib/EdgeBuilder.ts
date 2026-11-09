@@ -10,6 +10,8 @@ export class EdgeBuilder {
 	get count(): number { return this.data.length / 11; }
 
 	line(a: Vec3, b: Vec3, color: Rgb): void {
+		// The shader expands these two triangles perpendicular to the projected line, in pixels.
+		// Both endpoints carry the other endpoint and direction so their screen normals agree.
 		const vertex = (p: Vec3, other: Vec3, side: number, direction: number) =>
 			this.data.push(...p, ...other, ...color, side, direction);
 		vertex(a, b, -1, 1); vertex(a, b, 1, 1); vertex(b, a, -1, -1);
@@ -44,6 +46,7 @@ export class EdgeBuilder {
 		}
 	}
 
+	/** Capture a vertex range after appending a logical group of edges. */
 	range(first: number): DrawRange { return { first, count: this.count - first }; }
 	build(): Float32Array { return new Float32Array(this.data); }
 }

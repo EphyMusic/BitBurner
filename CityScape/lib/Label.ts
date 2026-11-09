@@ -133,6 +133,7 @@ export class Label {
 	}
 
 	private placeTip(): void {
+		// Prefer the card's right side, flipping left and clamping vertically near viewport edges.
 		const opt = this.optionEls[this.tipIdx];
 		if (!opt || !this.shown || this.tipEl.style.display === "none") return;
 		const c = this.card.getBoundingClientRect();
@@ -167,6 +168,7 @@ export class Label {
 	}
 
 	setPinned(pinned: boolean): void {
+		// Hover cards ignore pointer events; pinned cards must accept clicks and scrolling.
 		this.pinned = pinned;
 		this.card.style.pointerEvents = pinned ? "auto" : "none";
 		this.closeEl.style.display = pinned ? "block" : "none";
@@ -259,6 +261,7 @@ export class Label {
 	}
 
 	private renderList(): void {
+		// Options are rebuilt only when the page/theme changes, not on every animation frame.
 		const t = this.theme;
 		this.list.textContent = "";
 		this.optionEls = [];
@@ -279,6 +282,7 @@ export class Label {
 		}
 
 		this.options.forEach((o, i) => {
+			// Trusted-only options receive the real game button overlaid by CityScape instead.
 			const el = this.doc.createElement("div");
 			el.textContent = o.label;
 			Object.assign(el.style, {

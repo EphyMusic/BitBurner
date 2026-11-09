@@ -3,6 +3,7 @@ import { rotate } from "./Grid";
 import { add, cross, lookAt, multiply, normalize, perspective, scale, sub } from "./Mat4";
 
 const FOV = Math.PI / 4;
+// Map rows increase toward +Z: an eye on +Z looking toward the target faces north.
 const HOME_YAW = 0;
 const HOME_PITCH = Math.PI * 3 / 8;
 const YAW_LIMIT = Math.PI / 3;
@@ -19,6 +20,7 @@ export class Camera {
 	private homeDistance = 30;
 	private panBounds: [number, number] = [30, 30];
 
+	/** Adopt a newly generated city's framing and the map rectangle used to constrain panning. */
 	frame(center: Vec3, radius: number, bounds: [number, number]): void {
 		this.target = [...center];
 		this.homeTarget = [...center];
@@ -35,12 +37,14 @@ export class Camera {
 		this.pitch = HOME_PITCH;
 	}
 
+	/** Convert drag pixels to radians while keeping the city within a useful viewing angle. */
 	orbit(dx: number, dy: number): void {
 		this.yaw = Math.min(YAW_LIMIT, Math.max(-YAW_LIMIT, this.yaw - dx * 0.008));
 		this.pitch = Math.min(MAX_PITCH, Math.max(MIN_PITCH, this.pitch + dy * 0.008));
 	}
 
 	pan(dx: number, dy: number): void {
+		// Pan in the camera's ground plane; scale by distance for consistent screen-space motion.
 		const { right } = this.basis();
 		const flat = normalize([-Math.sin(this.yaw), 0, -Math.cos(this.yaw)]);
 		const k = this.distance * 0.0018;
@@ -53,6 +57,7 @@ export class Camera {
 	}
 
 	zoom(delta: number): void {
+		// Exponential scaling makes each wheel increment a proportional change in distance.
 		this.distance = Math.min(this.homeDistance * 1.6, Math.max(3, this.distance * Math.exp(delta * 0.001)));
 	}
 
@@ -88,6 +93,7 @@ export class Camera {
 
 /** Ray vs. a yaw-rotated box; min/max are relative to center. Returns the hit distance or null. */
 export function rayOrientedBox(origin: Vec3, dir: Vec3, center: Vec3, yaw: number, min: Vec3, max: Vec3): number | null {
+	// Transform the ray into building-local coordinates before applying the axis-aligned slab test.
 	const [ox, oz] = rotate(origin[0] - center[0], origin[2] - center[2], -yaw);
 	const [dx, dz] = rotate(dir[0], dir[2], -yaw);
 	return rayBox([ox, origin[1], oz], [dx, dir[1], dz], min, max);
@@ -98,6 +104,7 @@ export function rayBox(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3): number | 
 	let tMin = 0;
 	let tMax = Infinity;
 	for (let i = 0; i < 3; i++) {
+		// A parallel ray only intersects this slab if it already lies between its planes.
 		if (Math.abs(dir[i]) < 1e-9) {
 			if (origin[i] < min[i] || origin[i] > max[i]) return null;
 			continue;

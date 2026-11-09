@@ -9,6 +9,7 @@ type Point = [number, number];
 interface Stop { name: string; x: number; z: number }
 interface Node { point: Point; edges: number[]; stations: string[] }
 interface Edge { a: number; b: number; interchange: number | undefined; length: number }
+// Distances are cumulative along a closed walk; stations and reversals are explicit braking points.
 interface Route { points: Point[]; distances: number[]; stops: { distance: number; station: boolean }[]; length: number; stationCount: number }
 interface Train { route: Route; distance: number; speed: number; nextStop: number; wait: number; visits: number }
 
@@ -21,6 +22,7 @@ const key = (p: Point) => `${Math.round(p[0] * 10000)},${Math.round(p[1] * 10000
 
 /** Builds one closed station-to-station route per rail network with at least two stations. */
 function routes(spans: RailSpan[], stops: Stop[]): { walks: Route[]; stationCount: number } {
+	// Trim dead-end spans for nose clearance; routes ultimately visit stations rather than track ends.
 	const degrees = new Map<string, number>();
 	for (const span of spans) for (const point of [span.a, span.b]) {
 		const k = key(point);
@@ -37,6 +39,7 @@ function routes(spans: RailSpan[], stops: Stop[]): { walks: Route[]; stationCoun
 		};
 	});
 	for (const stop of stops) {
+		// Project each station onto its nearest span and split the graph there.
 		let best = Infinity, bestLine = -1, bestT = 0;
 		for (const [i, line] of lines.entries()) {
 			const dx = line.b[0] - line.a[0], dz = line.b[1] - line.a[1];
@@ -87,6 +90,7 @@ function routes(spans: RailSpan[], stops: Stop[]): { walks: Route[]; stationCoun
 			}
 		} else distance[from] = 0;
 		while (visited.size < distance.length) {
+			// Dijkstra over directed arcs accounts for turn restrictions and prefers gentler turns.
 			let current = -1;
 			for (let i = 0; i < distance.length; i++) if (!visited.has(i) && (current < 0 || distance[i] < distance[current])) current = i;
 			if (current < 0 || !Number.isFinite(distance[current])) return null;
@@ -117,6 +121,7 @@ function routes(spans: RailSpan[], stops: Stop[]): { walks: Route[]; stationCoun
 	const walks: Route[] = [];
 	const assigned = new Set<number>();
 	for (let start = 0; start < nodes.length; start++) {
+		// Process disconnected networks independently; a single station cannot sustain a route.
 		if (assigned.has(start)) continue;
 		const component: number[] = [], pending = [start];
 		while (pending.length) {
@@ -130,6 +135,7 @@ function routes(spans: RailSpan[], stops: Stop[]): { walks: Route[]; stationCoun
 		if (stations.length < 2) continue;
 		const first = stations[0], remaining = new Set(stations.slice(1));
 		const circuit = [first];
+		// Visit the nearest reachable unvisited station, then close the walk back to its start.
 		let current: number | null = null;
 		const append = (path: number[]) => {
 			for (const arc of path) {
@@ -150,6 +156,7 @@ function routes(spans: RailSpan[], stops: Stop[]): { walks: Route[]; stationCoun
 		const distances = [0];
 		for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
 		const routeStops: Route["stops"] = [];
+		// Reversals also require a brief stop even if no station is present.
 		for (let i = 1; i < points.length; i++) {
 			const prev = points[i - 1], p = points[i], next = points[(i + 1) % (points.length - 1)];
 			const ax = p[0] - prev[0], az = p[1] - prev[1];
@@ -170,9 +177,11 @@ export class Trains {
 
 	constructor(spans: RailSpan[], stops: Stop[]) {
 		const { walks, stationCount } = routes(spans, stops);
+		// Two to four stations get one train; each additional three adds one, capped at four.
 		const count = stationCount < 2 ? 0 : Math.min(4, Math.floor((stationCount + 1) / 3));
 		const allocation = walks.map(() => 0);
 		for (let i = 0; i < count && walks.length; i++) {
+			// Give unserved networks priority, then allocate according to stations per train.
 			let best = 0;
 			for (let j = 1; j < walks.length; j++) {
 				if ((allocation[j] === 0 && allocation[best] !== 0)
@@ -195,6 +204,7 @@ export class Trains {
 				}
 			}
 			const selected: Point[] = [];
+			// Greedy spatial separation reduces initial overlap on routes that double back.
 			for (let i = 0; i < allocation[index]; i++) {
 				let start = candidates[0], separation = -1;
 				for (const candidate of candidates) {
@@ -209,6 +219,7 @@ export class Trains {
 	}
 
 	build(time: number): { vertices: Float32Array; edges: Float32Array } {
+		// Limit elapsed time and integrate in small steps for stable braking after frame stalls.
 		const dt = this.lastTime === null ? 0 : Math.min(Math.max(0, time - this.lastTime), 100) / 1000;
 		this.lastTime = time;
 		const mesh = new MeshBuilder(), edges = new EdgeBuilder();
@@ -221,6 +232,7 @@ export class Trains {
 				if (train.wait > 0) { train.wait = Math.max(0, train.wait - step); continue; }
 				const stop = route.stops[train.nextStop];
 				const until = stop ? stop.distance - train.distance : route.length - train.distance;
+				// v² = 2ad provides the maximum speed that can still stop at the next waypoint.
 				const target = Math.min(MAX_SPEED, Math.sqrt(2 * ACCELERATION * Math.max(0, until)));
 				const nextSpeed = train.speed < target ? Math.min(target, train.speed + ACCELERATION * step) : Math.max(target, train.speed - ACCELERATION * step);
 				const move = Math.min(until, (train.speed + nextSpeed) * step / 2);
@@ -243,6 +255,7 @@ export class Trains {
 			const t = (train.distance - route.distances[i - 1]) / length;
 			const ux = (b[0] - a[0]) / length, uz = (b[1] - a[1]) / length;
 			const vertexDirection = (vertex: number): Point => {
+				// Blend adjacent segment tangents except at reversals, avoiding abrupt lane swaps.
 				const count = route.points.length - 1;
 				const current = vertex % count;
 				const prev = route.points[(current + count - 1) % count];
@@ -270,6 +283,7 @@ export class Trains {
 				const [rx, rz] = rotate(px, pz, yaw);
 				return [x + rx, RAIL_Y + py, z + rz];
 			};
+			// A level bottom and descending roof form the broad, blunt bullet-train nose.
 			const back = [point(-0.36, 0.03, -0.10), point(-0.36, 0.03, 0.10), point(-0.36, 0.34, 0.10), point(-0.36, 0.34, -0.10)];
 			const front = [point(0.13, 0.03, -0.10), point(0.13, 0.03, 0.10), point(0.13, 0.34, 0.10), point(0.13, 0.34, -0.10)];
 			const nose = [point(0.36, 0.03, -0.10), point(0.36, 0.03, 0.10), point(0.36, 0.10, 0.10), point(0.36, 0.10, -0.10)];

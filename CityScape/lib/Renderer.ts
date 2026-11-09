@@ -5,6 +5,9 @@ import type { Rgb } from "./Palette";
 import { Trains } from "./Trains";
 import { Cars } from "./Cars";
 
+// Shared by both programs so shells and outlines fade at exactly the same world-space boundary.
+// A noise-perturbed circular edge hides the rectangular source map. Slowly shifting mist and
+// frame-stepped, differently oriented static are evaluated in world coordinates, not screen space.
 const FOG = `
 uniform float uTime;
 uniform vec2 uFogBounds;
@@ -61,6 +64,7 @@ varying vec2 vWorld;
 ${FOG}
 void main() { gl_FragColor = vec4(mix(vCol, fogColor(vWorld), fogAmount(vWorld) * uFog), uAlpha); }`;
 
+// Expand line quads after projection, preserving a constant glow width in screen pixels.
 const EDGE_VERTEX = `
 attribute vec3 aPos;
 attribute vec3 aOther;
@@ -166,6 +170,7 @@ export class Renderer {
 	}
 
 	setScene(scene: Scene): void {
+		// Static city geometry is uploaded once; traffic gets separate dynamic buffers each frame.
 		this.scene = scene;
 		this.trains = new Trains(scene.railSpans, scene.railStops);
 		this.cars = new Cars(scene.streets, scene.trafficSeed);
@@ -188,6 +193,7 @@ export class Renderer {
 	}
 
 	resize(): number {
+		// Limit high-DPI buffer size without changing CSS layout or input coordinates.
 		this.pixelRatio = Math.min(eval("window").devicePixelRatio || 1, 2);
 		const w = Math.max(1, Math.floor(this.canvas.clientWidth * this.pixelRatio));
 		const h = Math.max(1, Math.floor(this.canvas.clientHeight * this.pixelRatio));
@@ -208,6 +214,7 @@ export class Renderer {
 		gl.depthMask(true);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		if (!scene) return;
+		// Simulations consume browser time only; Netscript remains on the main tick.
 		const time = eval("window").performance.now();
 		const trains = this.trains!.build(time);
 		const cars = this.cars!.build(time);
@@ -224,6 +231,7 @@ export class Renderer {
 		const carBodies: DrawRange = { first: 0, count: cars.vertices.length / 9 };
 		const carEdges: DrawRange = { first: 0, count: cars.edges.length / 11 };
 		const uniform = (program: WebGLProgram, name: string) => {
+			// Uniform locations are program-specific; missing uniforms are valid no-ops.
 			let locations = this.uniforms.get(program);
 			if (!locations) {
 				locations = new Map();
@@ -264,6 +272,7 @@ export class Renderer {
 		solid(this.carBuffer);
 		draw(carBodies);
 		gl.colorMask(true, true, true, true);
+		// Shade only prepass-visible shells, then draw translucent filler without writing depth.
 		gl.enable(gl.BLEND);
 		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 		gl.depthMask(false);
@@ -295,6 +304,7 @@ export class Renderer {
 			draw(range);
 		};
 		gl.uniform1f(uniform(this.edge, "uFog"), 1);
+		// Glowing lines depth-test against the shells, with hover emphasis on one landmark.
 		edgeDraw(scene.fillerEdges, [1, 1, 1], 0.32, 1.7);
 		edgeDraw(scene.railEdges, this.railColor, 0.9, 2.6);
 		scene.buildings.forEach((b, i) => edgeDraw(b.edges, [1, 1, 1], 1, i === hovered ? 4 : 3, i === hovered ? 0.2 : 0));
@@ -307,6 +317,7 @@ export class Renderer {
 	}
 
 	dispose(): void {
+		// Release all GPU allocations, including the context, when the original UI is restored.
 		const gl = this.gl;
 		gl.deleteBuffer(this.buffer);
 		gl.deleteBuffer(this.edgeBuffer);

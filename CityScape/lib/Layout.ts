@@ -38,6 +38,7 @@ export interface Street {
 /** Encloses the original map and any landmarks moved beyond it. */
 export function cityRadius(city: CityModel, placed: PlacedBuilding[]): number {
 	const width = city.cols * CELL_W, depth = city.rows * CELL_D;
+	// Enclose the rectangular source map and keep even displaced landmarks inside the clear area.
 	const fogMargin = CITY_MARGIN + 3;
 	return Math.max(Math.hypot(width / 2, depth / 2) + fogMargin,
 		...placed.map(b => Math.hypot(b.x - width / 2, b.z - depth / 2) + FOOTPRINT + fogMargin));
@@ -51,6 +52,7 @@ export function cityStreets(city: CityModel, placed: PlacedBuilding[]): Street[]
 	type Point = [number, number];
 	const sites: Point[] = [];
 	const area = Math.PI * radius * radius;
+	// Spread early sites farther apart, then fill gaps for varied block sizes.
 	const target = Math.min(180, Math.max(12, Math.round(area / 11)));
 	for (let attempt = 0; attempt < target * 35 && sites.length < target; attempt++) {
 		const p: Point = [cx + (rng() * 2 - 1) * radius, cz + (rng() * 2 - 1) * radius];
@@ -64,6 +66,7 @@ export function cityStreets(city: CityModel, placed: PlacedBuilding[]): Street[]
 	});
 	const polygons: Point[][] = [];
 	for (const site of sites) {
+		// Clip the circular boundary against every perpendicular bisector (a Voronoi cell).
 		let polygon: Point[] = boundary;
 		for (const other of sites) {
 			if (site === other || !polygon.length) continue;
@@ -91,6 +94,7 @@ export function cityStreets(city: CityModel, placed: PlacedBuilding[]): Street[]
 		if (length < 0.001) return;
 		let intervals: [number, number][] = [[0, 1]];
 		for (const b of placed) {
+			// Cut out intervals crossing a landmark's clearance circle rather than moving the landmark.
 			const radius = FOOTPRINT * 0.78 + STREET_WIDTH / 2;
 			const along = ((b.x - a[0]) * dx + (b.z - a[1]) * dz) / length;
 			const perpendicular = ((b.x - a[0]) * dz - (b.z - a[1]) * dx) / length;
@@ -111,6 +115,7 @@ export function cityStreets(city: CityModel, placed: PlacedBuilding[]): Street[]
 		}
 	};
 	for (const polygon of polygons) for (let i = 0; i < polygon.length; i++) {
+		// Neighboring cells share edges; retain each street segment only once.
 		const a = polygon[i], b = polygon[(i + 1) % polygon.length];
 		const edgeKey = [pointKey(a), pointKey(b)].sort().join("|");
 		if (seen.has(edgeKey)) continue;
@@ -159,6 +164,7 @@ export function placeBuildings(city: CityModel, roads: Roads): PlacedBuilding[] 
 	};
 
 	for (let pass = 0; pass < 4; pass++) {
+		// Separating one landmark may push it toward a rail, so repeat both constraints.
 		for (let i = 0; i < placed.length; i++) {
 			for (let j = i + 1; j < placed.length; j++) {
 				const a = placed[i];
@@ -185,6 +191,7 @@ export function fillerLots(city: CityModel, roads: Roads, placed: PlacedBuilding
 	const cityLimit = cityRadius(city, placed);
 	const lots: Lot[] = [];
 	const buckets = new Map<string, Lot[]>();
+	// Unit-size spatial buckets limit overlap checks to nearby lots.
 	const bucket = (x: number, z: number) => `${Math.floor(x)},${Math.floor(z)}`;
 	for (const street of streets) {
 		const dx = street.b[0] - street.a[0], dz = street.b[1] - street.a[1];
@@ -199,12 +206,14 @@ export function fillerLots(city: CityModel, roads: Roads, placed: PlacedBuilding
 				const pz = street.a[1] + uz * along + ux * side * offset;
 				const downtown = Math.exp(-(((px - width * 0.55) / Math.max(width * 0.27, 1)) ** 2
 					+ ((pz - depth * 0.45) / Math.max(depth * 0.27, 1)) ** 2));
+				// Favor occasional taller buildings around the city center, with variety elsewhere.
 				const heightRoll = rng();
 				const h = heightRoll < 0.9 - downtown * 0.35 ? 0.3 + rng() * 0.75 : 1.05 + rng() * 1.25;
 				const color = FILLER_COLORS[Math.floor(rng() * FILLER_COLORS.length)];
 				const skip = rng() < (row ? 0.22 : 0.08) || Math.hypot(px - width / 2, pz - depth / 2) + radius > cityLimit;
 				if (skip || placed.some(b => Math.hypot(b.x - px, b.z - pz) < FOOTPRINT * 0.78 + Math.hypot(w, d) / 2 + 0.1)) continue;
 				if (stations.some(s => Math.hypot(s.x - px, s.z - pz) < 1.45 + radius)) continue;
+				// Keep background buildings clear of rail, stations, streets, and landmarks.
 				const hit = nearestRoad(px, pz, roads);
 				if (hit && hit.dist < 1.25 + Math.hypot(w, d) / 2) continue;
 				if (streets.some(s => {

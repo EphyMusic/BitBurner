@@ -81,6 +81,8 @@ export class CityScape {
 		}, this.readTheme());
 		this.renderer = new Renderer(this.overlay.canvas);
 		onExit(() => this.close());
+		// React can remount the map between ticks; observe it so hiding happens before paint.
+		this.dom.watch(() => this.guard(() => this.sync()));
 		this.raf = this.win.requestAnimationFrame(this.frame);
 	}
 
@@ -103,7 +105,7 @@ export class CityScape {
 		this.closed = true;
 		this.win.cancelAnimationFrame(this.raf);
 		if (this.pin) this.dom.back();
-		this.dom.restore();
+		this.dom.dispose();
 		this.releaseProxies();
 		this.overlay.dispose();
 		this.renderer.dispose();
@@ -115,6 +117,7 @@ export class CityScape {
 		const { city } = this.dom.poll();
 
 		if (city) {
+			// Retain the camera and GPU scene when only the DOM nodes were remounted.
 			if (!this.scene || city.signature !== this.signature) {
 				this.signature = city.signature;
 				this.scene = buildScene(city);
@@ -136,6 +139,7 @@ export class CityScape {
 		}
 
 		const page = this.pin ? this.dom.locationPage() : null;
+		// Keep the overlay alive during navigation, but only mirror a location page we opened.
 		if (this.pin && page) {
 			this.pin.opened = true;
 			this.graceUntil = 0;

@@ -49,6 +49,7 @@ export function parseCity(doc: Document): CityModel | null {
 	let cols = 0;
 
 	lines.forEach((line, row) => {
+		// Track columns across text and nested landmark spans without flattening their aria-labels.
 		let col = 0;
 		let inLabel = false;
 		const chars = new Map<number, string>();
@@ -58,6 +59,7 @@ export function parseCity(doc: Document): CityModel | null {
 				for (const ch of node.textContent ?? "") {
 					chars.set(col, ch);
 					if (ch === "[") inLabel = true;
+					// Bracketed station annotations and digits are labels, not track geometry.
 					const decoration = inLabel || /[0-9]/.test(ch);
 					if (ch === "]") inLabel = false;
 					if (ch !== " " && !decoration) candidates.push({ ch, col, row });

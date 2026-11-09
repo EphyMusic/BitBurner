@@ -18,6 +18,7 @@ export interface RoadSegment {
 }
 
 export interface Roads {
+	/** These legacy-named roads describe the ASCII map's monorail, not decorative streets. */
 	segments: RoadSegment[];
 	junctions: Point[];
 }
@@ -81,6 +82,7 @@ export function extractRoads(city: CityModel): Roads {
 }
 
 export function nearestRoad(x: number, z: number, roads: Roads): RoadHit | null {
+	// Project onto each finite segment, clamping the closest point at its endpoints.
 	let best: RoadHit | null = null;
 	for (const seg of roads.segments) {
 		const rel = (x - seg.a[0]) * seg.ux + (z - seg.a[1]) * seg.uz;

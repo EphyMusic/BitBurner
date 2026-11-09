@@ -31,12 +31,48 @@ export interface CitySync {
 export class CityDom {
 	private current: CityModel | null = null;
 	private saved = new Map<HTMLElement, string>();
+	private observer: MutationObserver | null = null;
 
 	constructor(private doc: Document) {
-		onExit(() => this.restore());
+		onExit(() => this.dispose());
+	}
+
+	/** Detects map mounting before the browser paints, rather than waiting for the next game tick. */
+	watch(onChange: () => void): void {
+		if (this.observer) return;
+		const View = this.doc.defaultView;
+		if (!View) throw new Error("Cannot observe the city without a document window");
+		this.observer = new View.MutationObserver(records => {
+			const container = this.current?.container;
+			// Re-parse if React replaces map lines or removes the current map.
+			if (container && (!container.isConnected || records.some(r => container.contains(r.target)))) {
+				onChange();
+				return;
+			}
+			for (const record of records) {
+				// Outside a map, only newly mounted building glyphs warrant a full document scan.
+				for (const node of Array.from(record.addedNodes)) {
+					if (node.nodeType !== 1) continue;
+					const el = node as Element;
+					if (el.matches("span[aria-label] > b") || el.querySelector("span[aria-label] > b")) {
+						onChange();
+						return;
+					}
+				}
+			}
+		});
+		this.observer.observe(this.doc.body, { childList: true, subtree: true });
+	}
+
+	dispose(): void {
+		// Stop observing before restoring styles; no subsequent mutation should reclaim the map.
+		this.observer?.disconnect();
+		this.observer = null;
+		this.restore();
 	}
 
 	poll(): CitySync {
+		// Visibility preserves layout and React ownership, unlike detaching the original nodes.
 		const next = parseCity(this.doc);
 		if (!next) {
 			this.restore();
@@ -161,6 +197,7 @@ export class CityDom {
 	}
 
 	private hide(lines: HTMLElement[]): void {
+		// Record each original inline value once, including newly created lines, for exact restoration.
 		for (const el of lines) {
 			if (this.saved.has(el)) continue;
 			this.saved.set(el, el.style.visibility);

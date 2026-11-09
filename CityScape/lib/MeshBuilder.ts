@@ -4,6 +4,7 @@ import type { Rgb } from "./Palette";
 import { rotate } from "./Grid";
 
 export interface DrawRange {
+	/** Offsets and counts are vertices, not floats or bytes. */
 	first: number;
 	count: number;
 }
@@ -15,6 +16,7 @@ export class MeshBuilder {
 	get count(): number { return this.data.length / 9; }
 
 	tri(a: Vec3, b: Vec3, c: Vec3, color: Rgb, outward?: Vec3): void {
+		// Explicit outward hints correct lighting normals without relying on face winding.
 		let n = normalize(cross(sub(b, a), sub(c, a)));
 		if (outward && dot(n, outward) < 0) n = [-n[0], -n[1], -n[2]];
 		for (const p of [a, b, c]) this.data.push(...p, ...n, ...color);
@@ -32,6 +34,7 @@ export class MeshBuilder {
 			return [cx + x, y0 + sy * h, cz + z];
 		};
 		const center: Vec3 = [cx, y0 + h / 2, cz];
+		// The underside is omitted because boxes sit on a supporting surface.
 		const faces: Vec3[][] = [
 			[p(0, 1, 0), p(0, 1, 1), p(1, 1, 1), p(1, 1, 0)],
 			[p(1, 0, 0), p(1, 1, 0), p(1, 1, 1), p(1, 0, 1)],

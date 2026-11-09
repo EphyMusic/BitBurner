@@ -67,6 +67,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 	};
 	const supported: [number, number][] = [];
 	const support = (x: number, z: number) => {
+		// Avoid overlapping piers where curved spans and junctions meet.
 		if (supported.some(p => Math.hypot(p[0] - x, p[1] - z) < 0.45)) return;
 		supported.push([x, z]);
 		prism(ring(x, 0, z, 0.12, 0.12), ring(x, RAIL_Y - 0.2, z, 0.19, 0.19));
@@ -90,6 +91,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 			box(ex, PLATFORM_Y + PLATFORM_HEIGHT, ez, 0.07, 0.78, 0.07, yaw);
 		}
 		const stairHeight = PLATFORM_Y + PLATFORM_HEIGHT;
+		// Separate thin treads spiral around a central pole, from the deck toward ground level.
 		const stairOffset = BEAM_WIDTH / 2 + PLATFORM_WIDTH + 0.29;
 		const sx = x + nx * stairOffset, sz = z + nz * stairOffset;
 		box(sx, 0, sz, 0.07, stairHeight, 0.07, yaw);
@@ -113,6 +115,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 		touching.set(k, list);
 	}
 	const normal = (point: [number, number], span: RailSpan): [number, number] => {
+		// Miter adjacent span edges at bends so the beam does not visibly split at joins.
 		const nx = -span.uz;
 		const nz = span.ux;
 		const adjacent = touching.get(key(point));
@@ -145,6 +148,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 			if (!supported.some(p => Math.hypot(p[0] - x, p[1] - z) < 2)) support(x, z);
 		}
 	}
+	// True track ends receive buffer stops, not passenger platforms.
 	for (const [endpointKey, spans] of touching) {
 		if (spans.length !== 1) continue;
 		const span = spans[0];
@@ -157,6 +161,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 		mesh.box(x, RAIL_Y - BEAM_DEPTH, z, END_STOP_LENGTH, BEAM_DEPTH + END_STOP_HEIGHT, END_STOP_WIDTH, DARK, yaw);
 		edges.box(x, RAIL_Y - BEAM_DEPTH, z, END_STOP_LENGTH, BEAM_DEPTH + END_STOP_HEIGHT, END_STOP_WIDTH, WHITE, yaw);
 	}
+	// Stations may only serve landmarks on the same connected rail component.
 	const components = new Map<RailSpan, number>();
 	for (const span of path.spans) {
 		if (components.has(span)) continue;
@@ -169,6 +174,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 			for (const point of [current.a, current.b]) pending.push(...(touching.get(key(point)) ?? []).filter(s => !components.has(s)));
 		}
 	}
+	// Only buildings whose original map cells were near track create station demand.
 	const demand: { building: PlacedBuilding; component: number }[] = [];
 	for (const [index, building] of buildings.entries()) {
 		const cell = cells[index];
@@ -185,6 +191,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 	type Candidate = { x: number; z: number; ux: number; uz: number; side: number; streetDistance: number; component: number };
 	const candidates: Candidate[] = [];
 	for (const span of path.spans) {
+		// Use straight stretches with room for a deck, stairs, and clearance from landmarks.
 		if (span.interchange !== undefined || span.len < PLATFORM_LENGTH + 0.4) continue;
 		const margin = PLATFORM_LENGTH / 2 + 0.2;
 		const count = Math.ceil((span.len - 2 * margin) / 0.55);
@@ -213,6 +220,7 @@ export function addMonorail(mesh: MeshBuilder, edges: EdgeBuilder, roads: Roads,
 	}
 	const stops: { name: string; x: number; z: number }[] = [];
 	const uncovered = new Set(demand);
+	// Greedily cover nearby landmarks while favoring street access and spacing platforms apart.
 	while (uncovered.size) {
 		let best: Candidate | null = null, bestScore = -Infinity;
 		for (const candidate of candidates) {

@@ -1,5 +1,6 @@
 // import {NS} from "@ns";
 
+/** Retains individual failures so the installer can report all missing files with manual commands. */
 class DownloadError {
 	message:string;
 	time: number;
@@ -12,6 +13,7 @@ class DownloadError {
 
 export async function main(ns: NS) {
 	ns.tprint("Downloading CityScape...")
+	// Each awaited download targets home; the companion command allows manual recovery if wget fails.
 	const files = [
 		{_: ns.tprint("Downloading main.ts..."),name: "main.ts",success: await ns.wget("https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/CityScape/main.ts","/CityScape/main.ts","home"),manual: "wget https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/CityScape/main.ts /CityScape/main.ts"},
         {_: ns.tprint("Downloading Camera.ts..."),name:"Camera.ts",success: await ns.wget("https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/CityScape/lib/Camera.ts","/CityScape/lib/Camera.ts","home"),manual: "wget https://raw.githubusercontent.com/EphyMusic/BitBurner/refs/heads/main/CityScape/lib/Camera.ts /CityScape/lib/Camera.ts"},

@@ -8,12 +8,14 @@ import { exitTasks } from "./lib/Cleanup";
  */
 export async function main(ns: NS): Promise<void> {
 	// ns.ramOverride(1.65)
+	// Register cleanup before creating DOM or WebGL resources, including for a forced script kill.
 	ns.atExit(exitTasks);
 	ns.disableLog("ALL");
 	ns.clearLog();
 	ns.ui.openTail();
 	ns.ui.resizeTail(250,35)
 	ns.ui.setTailMinimized(true);
+	// Netscript calls stay on this loop; browser callbacks operate only on cached state and the DOM.
 	const city = new CityScape(ns);
 	while (await city.tick(200)) { /* sync happens inside tick */ }
 }

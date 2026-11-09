@@ -1,4 +1,5 @@
 export type Vec3 = [number, number, number];
+/** Column-major matrices, matching WebGL's uniformMatrix4fv convention. */
 export type Mat4 = Float32Array;
 
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -15,6 +16,7 @@ export function normalize(a: Vec3): Vec3 {
 	return [a[0] / l, a[1] / l, a[2] / l];
 }
 
+/** Right-handed perspective projection into WebGL clip space. */
 export function perspective(fovy: number, aspect: number, near: number, far: number): Mat4 {
 	const f = 1 / Math.tan(fovy / 2);
 	const nf = 1 / (near - far);
@@ -27,6 +29,7 @@ export function perspective(fovy: number, aspect: number, near: number, far: num
 	return o;
 }
 
+/** Build a view matrix from the camera's orthonormal basis and eye position. */
 export function lookAt(eye: Vec3, center: Vec3, up: Vec3): Mat4 {
 	const z = normalize(sub(eye, center));
 	const x = normalize(cross(up, z));

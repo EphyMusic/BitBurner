@@ -28,6 +28,7 @@ const STYLES: Record<string, BuildingStyle> = {
 
 const FALLBACK: BuildingStyle = { color: hex("#8b949e"), height: 1.2, shape: "box" };
 
+// Shared ground and infrastructure colors; the renderer applies the live theme to rail outlines.
 export const ROAD_COLOR = hex("#3b4048");
 export const ASPHALT_COLOR = hex("#2b2f35");
 export const SIDEWALK_COLOR = hex("#5d636b");
@@ -37,6 +38,7 @@ export const GROUND_COLOR = hex("#10151a");
 /** Muted tones for the unclickable background buildings. */
 export const FILLER_COLORS: Rgb[] = ["#4b5563", "#556070", "#475569", "#5b5f6b", "#3f4a5a", "#645a52"].map(hex);
 
+/** Unknown map glyphs remain visible using a neutral fallback. */
 export function styleFor(glyph: string): BuildingStyle {
 	return STYLES[glyph] ?? FALLBACK;
 }

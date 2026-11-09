@@ -7,6 +7,7 @@ import type { Rgb } from "./Palette";
 type Point = [number, number];
 interface Junction { point: Point; links: number[] }
 interface Link { a: number; b: number; length: number }
+// An arc packs a link index and direction: even travels a -> b, odd travels b -> a.
 interface Car { arc: number; along: number; speed: number; color: Rgb }
 
 const COLORS: Rgb[] = [[0.35, 0.8, 0.95], [0.95, 0.65, 0.3], [0.86, 0.4, 0.4], [0.72, 0.85, 0.72]];
@@ -23,6 +24,7 @@ export class Cars {
 
 	constructor(streets: Street[], seed: string) {
 		this.rng = seededRandom(`${seed}:traffic`);
+		// Merge numerically equivalent street endpoints into a connected traffic graph.
 		const lookup = new Map<string, number>();
 		const node = (point: Point) => {
 			const key = `${Math.round(point[0] * 10000)},${Math.round(point[1] * 10000)}`;
@@ -43,6 +45,7 @@ export class Cars {
 			this.junctions[a].links.push(index);
 			this.junctions[b].links.push(index);
 		}
+		// Longer networks get more cars; sampling without replacement spreads their initial positions.
 		const count = Math.min(36, Math.floor(this.links.reduce((sum, link) => sum + link.length, 0) / 8));
 		const available = this.links.map((link, index) => ({ index, length: link.length })).filter(link => link.length >= 0.5);
 		for (let i = 0; i < count && available.length; i++) {
@@ -53,7 +56,9 @@ export class Cars {
 		}
 	}
 
+	/** Advance the decorative cars and rebuild their small dynamic meshes for this frame. */
 	build(time: number): { vertices: Float32Array; edges: Float32Array } {
+		// Clamp long pauses so returning to the tab does not teleport cars through the network.
 		const dt = this.lastTime === null ? 0 : Math.min(Math.max(0, time - this.lastTime), 100) / 1000;
 		this.lastTime = time;
 		const mesh = new MeshBuilder(), edges = new EdgeBuilder();
@@ -61,6 +66,7 @@ export class Cars {
 			car.along += dt * car.speed;
 			let link = this.links[car.arc >> 1];
 			while (car.along >= link.length) {
+				// Preserve overshoot across short links; reverse only when there is no other exit.
 				car.along -= link.length;
 				const at = car.arc % 2 === 0 ? link.b : link.a;
 				const choices = this.junctions[at].links.filter(i => i !== (car.arc >> 1));
@@ -71,6 +77,7 @@ export class Cars {
 			const a = this.junctions[car.arc % 2 === 0 ? link.a : link.b].point;
 			const b = this.junctions[car.arc % 2 === 0 ? link.b : link.a].point;
 			const ux = (b[0] - a[0]) / link.length, uz = (b[1] - a[1]) / link.length;
+			// Offset relative to direction of travel, so opposing cars use opposite sides.
 			const x = a[0] + ux * car.along - uz * LANE_OFFSET;
 			const z = a[1] + uz * car.along + ux * LANE_OFFSET;
 			const yaw = Math.atan2(-uz, ux);

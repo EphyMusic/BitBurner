@@ -8,6 +8,7 @@ export interface RailSpan {
 	len: number;
 	ux: number;
 	uz: number;
+	/** Identifies all segments belonging to the same complete turn through a junction. */
 	interchange?: number;
 }
 
@@ -42,6 +43,7 @@ export function railPath(roads: Roads): { spans: RailSpan[]; supports: Point[]; 
 		nodes[b].links.push(index);
 	};
 	for (const segment of roads.segments) addLink(nodeAt(segment.a), nodeAt(segment.b));
+	// Join junction centers only to nearby, aligned track ends; proximity alone creates false branches.
 	const endpoints = nodes.length;
 	for (const junction of roads.junctions) {
 		const center = nodeAt(junction, true);
@@ -102,6 +104,7 @@ export function railPath(roads: Roads): { spans: RailSpan[]; supports: Point[]; 
 					return point;
 				});
 				for (let a = 0; a < approaches.length; a++) {
+					// Every pair of approaches gets its own tagged curve for route continuity.
 					for (let b = a + 1; b < approaches.length; b++) {
 						bends.push({ center: node.point, a: approaches[a], b: approaches[b], interchange: bends.length });
 					}
@@ -133,6 +136,7 @@ export function railPath(roads: Roads): { spans: RailSpan[]; supports: Point[]; 
 		if (a >= 0) addSpan(trim.get(`${a},${i}`) ?? nodes[a].point, trim.get(`${b},${i}`) ?? nodes[b].point);
 	});
 	for (const bend of bends) {
+		// Approximate the quadratic Bezier with short straight spans for rendering and routing.
 		let previous = bend.a;
 		for (let i = 1; i <= 5; i++) {
 			const t = i / 5;

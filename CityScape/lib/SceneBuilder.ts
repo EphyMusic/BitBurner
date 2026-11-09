@@ -40,8 +40,8 @@ export interface Scene {
 	buildings: BuildingMesh[];
 	center: Vec3;
 	radius: number;
-	fogBounds: [number, number];
-	fogRadius: number;
+	fogBounds: [number, number]; // Source-map dimensions and fog center.
+	fogRadius: number; // Circular footprint in world units.
 }
 
 const HEIGHT_SCALE = 1.5;
@@ -53,6 +53,7 @@ export function buildScene(city: CityModel): Scene {
 	const width = city.cols * CELL_W;
 	const depth = city.rows * CELL_D;
 
+	// The large ground carries world-space fog well beyond the city's visible perimeter.
 	const margin = Math.max(width, depth) * 8 + 100;
 	mb.quad(
 		[-margin, 0, -margin],
@@ -67,6 +68,7 @@ export function buildScene(city: CityModel): Scene {
 	const laneColor: [number, number, number] = [0.2, 0.2, 0.18];
 	const streets = cityStreets(city, placed);
 	for (const street of streets) {
+		// Slightly raised strips and intersection caps prevent z-fighting with the ground.
 		const dx = street.b[0] - street.a[0], dz = street.b[1] - street.a[1];
 		const length = Math.hypot(dx, dz), ux = dx / length, uz = dz / length;
 		const strip = (from: number, to: number, halfWidth: number, height: number, color: [number, number, number]) => {
@@ -92,6 +94,7 @@ export function buildScene(city: CityModel): Scene {
 	}
 	const ground: DrawRange = { first: 0, count: mb.count };
 	const railFirst = edges.count;
+	// Build platforms before filler so their reserved areas stay free of background buildings.
 	const railSolidFirst = mb.count;
 	const rail = addMonorail(mb, edges, roads, placed, city.buildings, streets);
 	const railEdges = edges.range(railFirst);
@@ -106,6 +109,7 @@ export function buildScene(city: CityModel): Scene {
 	const fillerEdges = edges.range(fillerEdgeFirst);
 	const buildings: BuildingMesh[] = [];
 	for (const b of placed) {
+		// Dark shells provide occlusion; glyph-colored edges supply the holographic appearance.
 		const style = styleFor(b.glyph);
 		const h = style.height * HEIGHT_SCALE;
 		const f = FOOTPRINT;

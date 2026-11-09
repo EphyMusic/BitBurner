@@ -2,6 +2,7 @@
 export const CELL_W = 0.6;
 export const CELL_D = 1;
 
+/** Cell centers share the same world coordinates in layout, picking, and rail generation. */
 export const cellX = (col: number): number => (col + 0.5) * CELL_W;
 export const cellZ = (row: number): number => (row + 0.5) * CELL_D;
 

@@ -1,3 +1,4 @@
+// Shared by all CityScape modules so the script needs only one Netscript atExit handler.
 const exitList: (() => void)[] = [];
 
 /** Queue a cleanup task to run when the script exits. */

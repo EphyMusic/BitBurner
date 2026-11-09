@@ -40,6 +40,7 @@ export class Overlay {
 
 	constructor(private doc: Document, private handlers: OverlayHandlers, theme: LabelTheme, id = "bb-cityscape") {
 		this.theme = theme;
+		// Keep browser globals out of Netscript's static RAM analysis.
 		this.win = eval("window");
 		doc.getElementById(id)?.remove();
 
@@ -177,6 +178,7 @@ export class Overlay {
 	};
 
 	private onMove = (e: MouseEvent) => {
+		// Window-level listeners let a drag finish even if the pointer leaves the canvas.
 		if (!this.drag) {
 			if (e.target === this.canvas) {
 				const p = this.local(e);
@@ -196,6 +198,7 @@ export class Overlay {
 	private onUp = (e: MouseEvent) => {
 		const d = this.drag;
 		this.drag = null;
+		// A small movement threshold distinguishes building clicks from camera orbits.
 		if (d && d.button === 0 && d.moved < 5) {
 			const p = this.local(e);
 			this.handlers.click(p.x, p.y);
