@@ -1,7 +1,5 @@
 import type { CityModel } from "./CityParser";
 import { CELL_D, CELL_W, cellX, cellZ } from "./Grid";
-import type { MeshBuilder } from "./MeshBuilder";
-import { ASPHALT_COLOR, LANE_COLOR, SIDEWALK_COLOR } from "./Palette";
 
 export const ROAD_WIDTH = 0.5;
 export const SIDEWALK_WIDTH = 0.95;
@@ -61,7 +59,7 @@ export function extractRoads(city: CityModel): Roads {
 		else if (JUNCTION.has(ch)) junctions.push([x, z]);
 	}
 
-	// Building letters replace road characters on the map, so carry the road through them.
+	// Each occupied building cell connects only to its actual neighboring track cells.
 	const at = new Map(city.paths.map(p => [`${p.col},${p.row}`, p.ch]));
 	const has = (set: Set<string> | string[], col: number, row: number) => {
 		const ch = at.get(`${col},${row}`);
@@ -72,10 +70,12 @@ export function extractRoads(city: CityModel): Roads {
 	for (const { col, row } of city.buildings) {
 		const x = cellX(col);
 		const z = cellZ(row);
-		if (has(horizontal, col - 1, row) || has(horizontal, col + 1, row)) segments.push(segment([x - hw, z], [x + hw, z], false));
-		if (has(vertical, col, row - 1) || has(vertical, col, row + 1)) segments.push(segment([x, z - hd], [x, z + hd], false));
-		if (has(["\\"], col - 1, row - 1) || has(["\\"], col + 1, row + 1)) segments.push(segment([x - hw, z - hd], [x + hw, z + hd], true));
-		if (has(["/"], col + 1, row - 1) || has(["/"], col - 1, row + 1)) segments.push(segment([x - hw, z + hd], [x + hw, z - hd], true));
+		for (const side of [-1, 1]) {
+			if (has(horizontal, col + side, row)) segments.push(segment([x, z], [x + side * hw, z], false));
+			if (has(vertical, col, row + side)) segments.push(segment([x, z], [x, z + side * hd], false));
+			if (has(["\\", ...JUNCTION], col + side, row + side)) segments.push(segment([x, z], [x + side * hw, z + side * hd], true));
+			if (has(["/", ...JUNCTION], col + side, row - side)) segments.push(segment([x, z], [x + side * hw, z - side * hd], true));
+		}
 	}
 	return { segments, junctions };
 }
@@ -91,25 +91,4 @@ export function nearestRoad(x: number, z: number, roads: Roads): RoadHit | null 
 		if (!best || dist < best.dist) best = { dist, qx, qz, seg, atEnd: rel < 0.01 || rel > seg.len - 0.01 };
 	}
 	return best;
-}
-
-/** Sidewalks, asphalt and a center line for every segment, plus pads that close gaps at bends. */
-export function addRoadMesh(mb: MeshBuilder, roads: Roads): void {
-	const layer =  (width: number, height: number, color: [number, number, number], lineOnly = false) => {
-		for (const s of roads.segments) {
-			const cx = (s.a[0] + s.b[0]) / 2;
-			const cz = (s.a[1] + s.b[1]) / 2;
-			mb.box(cx, 0, cz, s.len + (lineOnly ? -0.1 : 0.12), height, width, color, s.yaw);
-			if (s.diagonal && !lineOnly) {
-				mb.box(s.a[0], 0, s.a[1], width, height, width, color);
-				mb.box(s.b[0], 0, s.b[1], width, height, width, color);
-			}
-		}
-		if (lineOnly) return;
-		for (const [x, z] of roads.junctions) mb.box(x, 0, z, width * 1.2, height, width * 1.2, color);
-	};
-
-	layer(SIDEWALK_WIDTH, 0.03, SIDEWALK_COLOR);
-	layer(ROAD_WIDTH, 0.06, ASPHALT_COLOR);
-	layer(0.05, 0.075, LANE_COLOR, true);
 }

@@ -51,24 +51,30 @@ export function parseCity(doc: Document): CityModel | null {
 	lines.forEach((line, row) => {
 		let col = 0;
 		let inLabel = false;
+		const chars = new Map<number, string>();
+		const candidates: PathCell[] = [];
 		for (const node of Array.from(line.childNodes)) {
 			if (node.nodeType === Node.TEXT_NODE) {
 				for (const ch of node.textContent ?? "") {
-					// "[name]" captions and node numbers are decoration, not roads.
+					chars.set(col, ch);
 					if (ch === "[") inLabel = true;
 					const decoration = inLabel || /[0-9]/.test(ch);
 					if (ch === "]") inLabel = false;
-					if (ch !== " " && !decoration) paths.push({ ch, col, row });
+					if (ch !== " " && !decoration) candidates.push({ ch, col, row });
 					col++;
 				}
 			} else if (node instanceof HTMLElement && node.hasAttribute("aria-label")) {
 				const glyph = (node.textContent ?? "X").trim() || "X";
 				buildings.push({ name: node.getAttribute("aria-label")!, glyph, col, row });
+				chars.set(col, glyph);
 				col++;
 			} else {
 				col += (node.textContent ?? "").length;
 			}
 		}
+		// A slash between node numbers is an annotation, not a diagonal path.
+		paths.push(...candidates.filter(p => p.ch !== "/" ||
+			!(/^\d$/.test(chars.get(p.col - 1) ?? "") && /^\d$/.test(chars.get(p.col + 1) ?? ""))));
 		cols = Math.max(cols, col);
 	});
 

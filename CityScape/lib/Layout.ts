@@ -9,6 +9,8 @@ import type { Roads } from "./Roads";
 export const FOOTPRINT = 1.3;
 const BUILDING_GAP = 1.6;
 const SIDEWALK_HALF = SIDEWALK_WIDTH / 2;
+export const CITY_MARGIN = 2;
+export const STREET_WIDTH = 0.34;
 
 export interface PlacedBuilding {
 	name: string;
@@ -26,6 +28,96 @@ export interface Lot {
 	h: number;
 	yaw: number;
 	color: Rgb;
+}
+
+export interface Street {
+	a: [number, number];
+	b: [number, number];
+}
+
+/** Encloses the original map and any landmarks moved beyond it. */
+export function cityRadius(city: CityModel, placed: PlacedBuilding[]): number {
+	const width = city.cols * CELL_W, depth = city.rows * CELL_D;
+	const fogMargin = CITY_MARGIN + 3;
+	return Math.max(Math.hypot(width / 2, depth / 2) + fogMargin,
+		...placed.map(b => Math.hypot(b.x - width / 2, b.z - depth / 2) + FOOTPRINT + fogMargin));
+}
+
+/** Irregular blocks: later sites subdivide the larger blocks formed by the original settlement. */
+export function cityStreets(city: CityModel, placed: PlacedBuilding[]): Street[] {
+	const cx = city.cols * CELL_W / 2, cz = city.rows * CELL_D / 2;
+	const radius = cityRadius(city, placed);
+	const rng = seededRandom(`${city.name || "city"}:streets`);
+	type Point = [number, number];
+	const sites: Point[] = [];
+	const area = Math.PI * radius * radius;
+	const target = Math.min(180, Math.max(12, Math.round(area / 11)));
+	for (let attempt = 0; attempt < target * 35 && sites.length < target; attempt++) {
+		const p: Point = [cx + (rng() * 2 - 1) * radius, cz + (rng() * 2 - 1) * radius];
+		if (Math.hypot(p[0] - cx, p[1] - cz) > radius) continue;
+		const separation = sites.length < target * 0.5 ? 2.8 : 1.55;
+		if (sites.every(q => Math.hypot(p[0] - q[0], p[1] - q[1]) >= separation)) sites.push(p);
+	}
+	const boundary: Point[] = Array.from({ length: 48 }, (_, i) => {
+		const angle = i * Math.PI * 2 / 48;
+		return [cx + Math.cos(angle) * radius, cz + Math.sin(angle) * radius];
+	});
+	const polygons: Point[][] = [];
+	for (const site of sites) {
+		let polygon: Point[] = boundary;
+		for (const other of sites) {
+			if (site === other || !polygon.length) continue;
+			const nx = other[0] - site[0], nz = other[1] - site[1];
+			const limit = (other[0] ** 2 + other[1] ** 2 - site[0] ** 2 - site[1] ** 2) / 2;
+			const clipped: Point[] = [];
+			for (let i = 0; i < polygon.length; i++) {
+				const a = polygon[i], b = polygon[(i + 1) % polygon.length];
+				const da = a[0] * nx + a[1] * nz - limit, db = b[0] * nx + b[1] * nz - limit;
+				if (da <= 0) clipped.push(a);
+				if ((da < 0 && db > 0) || (da > 0 && db < 0)) {
+					const t = da / (da - db);
+					clipped.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+				}
+			}
+			polygon = clipped;
+		}
+		polygons.push(polygon);
+	}
+	const streets: Street[] = [];
+	const seen = new Set<string>();
+	const pointKey = (p: Point) => `${Math.round(p[0] * 10000)},${Math.round(p[1] * 10000)}`;
+	const add = (a: Point, b: Point) => {
+		const dx = b[0] - a[0], dz = b[1] - a[1], length = Math.hypot(dx, dz);
+		if (length < 0.001) return;
+		let intervals: [number, number][] = [[0, 1]];
+		for (const b of placed) {
+			const radius = FOOTPRINT * 0.78 + STREET_WIDTH / 2;
+			const along = ((b.x - a[0]) * dx + (b.z - a[1]) * dz) / length;
+			const perpendicular = ((b.x - a[0]) * dz - (b.z - a[1]) * dx) / length;
+			if (Math.abs(perpendicular) >= radius) continue;
+			const reach = Math.sqrt(radius * radius - perpendicular * perpendicular);
+			const left = (along - reach) / length, right = (along + reach) / length;
+			intervals = intervals.flatMap(([start, end]): [number, number][] => {
+				if (right <= start || left >= end) return [[start, end]];
+				const remaining: [number, number][] = [];
+				if (left > start) remaining.push([start, left]);
+				if (right < end) remaining.push([right, end]);
+				return remaining;
+			});
+		}
+		for (const [start, end] of intervals) {
+			if ((end - start) * length < 0.001) continue;
+			streets.push({ a: [a[0] + dx * start, a[1] + dz * start], b: [a[0] + dx * end, a[1] + dz * end] });
+		}
+	};
+	for (const polygon of polygons) for (let i = 0; i < polygon.length; i++) {
+		const a = polygon[i], b = polygon[(i + 1) % polygon.length];
+		const edgeKey = [pointKey(a), pointKey(b)].sort().join("|");
+		if (seen.has(edgeKey)) continue;
+		seen.add(edgeKey);
+		add(a, b);
+	}
+	return streets;
 }
 
 /**
@@ -85,32 +177,52 @@ export function placeBuildings(city: CityModel, roads: Roads): PlacedBuilding[] 
 	return placed;
 }
 
-/** Fills the empty space around roads and landmarks with small, unclickable buildings. */
-export function fillerLots(city: CityModel, roads: Roads, placed: PlacedBuilding[]): Lot[] {
+/** Grows small buildings along both sides of the streets, then fills deeper lots. */
+export function fillerLots(city: CityModel, roads: Roads, placed: PlacedBuilding[], streets = cityStreets(city, placed), stations: { x: number; z: number }[] = []): Lot[] {
 	const rng = seededRandom(city.name || "city");
 	const width = city.cols * CELL_W;
 	const depth = city.rows * CELL_D;
-	const pitch = 1.1;
-	const margin = 2;
-	const cx = width / 2;
-	const cz = depth / 2;
-	const reach = Math.hypot(cx, cz) + margin;
+	const cityLimit = cityRadius(city, placed);
 	const lots: Lot[] = [];
-
-	for (let x = -margin; x <= width + margin; x += pitch) {
-		for (let z = -margin; z <= depth + margin; z += pitch) {
-			const w = 0.5 + rng() * 0.25;
-			const d = 0.5 + rng() * 0.25;
-			const px = x + (rng() - 0.5) * 0.2;
-			const pz = z + (rng() - 0.5) * 0.2;
-			const h = (0.35 + rng() * rng() * 1.8) * (1 - 0.45 * (Math.hypot(px - cx, pz - cz) / reach));
-			const color = FILLER_COLORS[Math.floor(rng() * FILLER_COLORS.length)];
-			const skip = rng() < 0.12;
-
-			if (skip || placed.some(b => Math.hypot(b.x - px, b.z - pz) < FOOTPRINT / 2 + 0.55 + 0.15)) continue;
-			const hit = nearestRoad(px, pz, roads);
-			if (hit && hit.dist < SIDEWALK_HALF + 0.1 + Math.max(w, d) / 2 + 0.15) continue;
-			lots.push({ x: px, z: pz, w, d, h, yaw: hit && hit.dist < 2.5 ? hit.seg.yaw : 0, color });
+	const buckets = new Map<string, Lot[]>();
+	const bucket = (x: number, z: number) => `${Math.floor(x)},${Math.floor(z)}`;
+	for (const street of streets) {
+		const dx = street.b[0] - street.a[0], dz = street.b[1] - street.a[1];
+		const length = Math.hypot(dx, dz), ux = dx / length, uz = dz / length;
+		for (let along = 0.2 + rng() * 0.3; along < length; along += 0.7 + rng() * 0.35) {
+			for (const side of [-1, 1]) for (let row = 0; row < 2; row++) {
+				const w = 0.32 + rng() * 0.34;
+				const d = 0.3 + rng() * 0.32;
+				const radius = Math.hypot(w, d) / 2;
+				const offset = STREET_WIDTH / 2 + radius + 0.07 + row * 0.85 + rng() * 0.1;
+				const px = street.a[0] + ux * along - uz * side * offset;
+				const pz = street.a[1] + uz * along + ux * side * offset;
+				const downtown = Math.exp(-(((px - width * 0.55) / Math.max(width * 0.27, 1)) ** 2
+					+ ((pz - depth * 0.45) / Math.max(depth * 0.27, 1)) ** 2));
+				const heightRoll = rng();
+				const h = heightRoll < 0.9 - downtown * 0.35 ? 0.3 + rng() * 0.75 : 1.05 + rng() * 1.25;
+				const color = FILLER_COLORS[Math.floor(rng() * FILLER_COLORS.length)];
+				const skip = rng() < (row ? 0.22 : 0.08) || Math.hypot(px - width / 2, pz - depth / 2) + radius > cityLimit;
+				if (skip || placed.some(b => Math.hypot(b.x - px, b.z - pz) < FOOTPRINT * 0.78 + Math.hypot(w, d) / 2 + 0.1)) continue;
+				if (stations.some(s => Math.hypot(s.x - px, s.z - pz) < 1.45 + radius)) continue;
+				const hit = nearestRoad(px, pz, roads);
+				if (hit && hit.dist < 1.25 + Math.hypot(w, d) / 2) continue;
+				if (streets.some(s => {
+					const x = s.b[0] - s.a[0], z = s.b[1] - s.a[1];
+					const t = Math.max(0, Math.min(1, ((px - s.a[0]) * x + (pz - s.a[1]) * z) / (x * x + z * z)));
+					return Math.hypot(px - s.a[0] - t * x, pz - s.a[1] - t * z) < STREET_WIDTH / 2 + radius + 0.03;
+				})) continue;
+				let occupied = false;
+				for (let bx = Math.floor(px) - 1; bx <= Math.floor(px) + 1; bx++) for (let bz = Math.floor(pz) - 1; bz <= Math.floor(pz) + 1; bz++) {
+					if ((buckets.get(`${bx},${bz}`) ?? []).some(lot => Math.hypot(lot.x - px, lot.z - pz) < radius + Math.hypot(lot.w, lot.d) / 2 + 0.08)) occupied = true;
+				}
+				if (occupied) continue;
+				const lot = { x: px, z: pz, w, d, h, yaw: Math.atan2(-uz, ux), color };
+				lots.push(lot);
+				const k = bucket(px, pz), neighbors = buckets.get(k) ?? [];
+				neighbors.push(lot);
+				buckets.set(k, neighbors);
+			}
 		}
 	}
 	return lots;

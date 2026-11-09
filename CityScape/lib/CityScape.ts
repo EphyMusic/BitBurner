@@ -119,7 +119,7 @@ export class CityScape {
 				this.signature = city.signature;
 				this.scene = buildScene(city);
 				this.renderer.setScene(this.scene);
-				this.camera.frame(this.scene.center, this.scene.radius);
+				this.camera.frame(this.scene.center, this.scene.radius, this.scene.fogBounds);
 				this.dropPin();
 			}
 			// A pin with the City page showing means the game left the location page (unless it's still opening).
@@ -339,6 +339,7 @@ export class CityScape {
 		if (key === this.themeKey) return;
 		this.themeKey = key;
 		this.overlay.setTheme(theme);
+		this.renderer.setTheme(theme.primary);
 	}
 
 	private frame = () => {

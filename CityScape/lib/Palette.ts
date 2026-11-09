@@ -32,7 +32,7 @@ export const ROAD_COLOR = hex("#3b4048");
 export const ASPHALT_COLOR = hex("#2b2f35");
 export const SIDEWALK_COLOR = hex("#5d636b");
 export const LANE_COLOR = hex("#b8a038");
-export const GROUND_COLOR = hex("#1a2418");
+export const GROUND_COLOR = hex("#10151a");
 
 /** Muted tones for the unclickable background buildings. */
 export const FILLER_COLORS: Rgb[] = ["#4b5563", "#556070", "#475569", "#5b5f6b", "#3f4a5a", "#645a52"].map(hex);

@@ -3,45 +3,57 @@ import { rotate } from "./Grid";
 import { add, cross, lookAt, multiply, normalize, perspective, scale, sub } from "./Mat4";
 
 const FOV = Math.PI / 4;
+const HOME_YAW = 0;
+const HOME_PITCH = Math.PI * 3 / 8;
+const YAW_LIMIT = Math.PI / 3;
+const MIN_PITCH = Math.PI * 35 / 180;
+const MAX_PITCH = Math.PI * 80 / 180;
 
 /** Orbit camera around a ground-level target. */
 export class Camera {
 	target: Vec3 = [0, 0, 0];
-	yaw = 0.6;
-	pitch = 0.95;
+	yaw = HOME_YAW;
+	pitch = HOME_PITCH;
 	distance = 30;
 	private homeTarget: Vec3 = [0, 0, 0];
 	private homeDistance = 30;
+	private panBounds: [number, number] = [30, 30];
 
-	frame(center: Vec3, radius: number): void {
+	frame(center: Vec3, radius: number, bounds: [number, number]): void {
 		this.target = [...center];
 		this.homeTarget = [...center];
+		this.panBounds = [...bounds];
 		this.distance = this.homeDistance = Math.max(radius * 2.4, 6);
-		this.yaw = 0.6;
-		this.pitch = 0.95;
+		this.yaw = HOME_YAW;
+		this.pitch = HOME_PITCH;
 	}
 
 	reset(): void {
 		this.target = [...this.homeTarget];
 		this.distance = this.homeDistance;
-		this.yaw = 0.6;
-		this.pitch = 0.95;
+		this.yaw = HOME_YAW;
+		this.pitch = HOME_PITCH;
 	}
 
 	orbit(dx: number, dy: number): void {
-		this.yaw -= dx * 0.008;
-		this.pitch = Math.min(1.5, Math.max(0.15, this.pitch + dy * 0.008));
+		this.yaw = Math.min(YAW_LIMIT, Math.max(-YAW_LIMIT, this.yaw - dx * 0.008));
+		this.pitch = Math.min(MAX_PITCH, Math.max(MIN_PITCH, this.pitch + dy * 0.008));
 	}
 
 	pan(dx: number, dy: number): void {
 		const { right } = this.basis();
 		const flat = normalize([-Math.sin(this.yaw), 0, -Math.cos(this.yaw)]);
 		const k = this.distance * 0.0018;
-		this.target = add(this.target, add(scale(right, -dx * k), scale(flat, dy * k)));
+		const target = add(this.target, add(scale(right, -dx * k), scale(flat, dy * k)));
+		this.target = [
+			Math.min(this.panBounds[0], Math.max(0, target[0])),
+			this.homeTarget[1],
+			Math.min(this.panBounds[1], Math.max(0, target[2])),
+		];
 	}
 
 	zoom(delta: number): void {
-		this.distance = Math.min(this.homeDistance * 3, Math.max(3, this.distance * Math.exp(delta * 0.001)));
+		this.distance = Math.min(this.homeDistance * 1.6, Math.max(3, this.distance * Math.exp(delta * 0.001)));
 	}
 
 	get eye(): Vec3 {
