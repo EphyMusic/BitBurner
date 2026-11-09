@@ -54,7 +54,7 @@ export function cityStreets(city: CityModel, placed: PlacedBuilding[]): Street[]
 	const area = Math.PI * radius * radius;
 	// Spread early sites farther apart, then fill gaps for varied block sizes.
 	const target = Math.min(180, Math.max(12, Math.round(area / 11)));
-	for (let attempt = 0; attempt < target * 35 && sites.length < target; attempt++) {
+	for (let attmpt = 0; attmpt < target * 35 && sites.length < target; attmpt++) {
 		const p: Point = [cx + (rng() * 2 - 1) * radius, cz + (rng() * 2 - 1) * radius];
 		if (Math.hypot(p[0] - cx, p[1] - cz) > radius) continue;
 		const separation = sites.length < target * 0.5 ? 2.8 : 1.55;
