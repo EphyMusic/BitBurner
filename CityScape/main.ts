@@ -7,7 +7,7 @@ import { exitTasks } from "./lib/Cleanup";
  * on-screen exit button or by killing the script - the original city view is restored.
  */
 export async function main(ns: NS): Promise<void> {
-	// ns.ramOverride(1.65)
+	ns.ramOverride(1.65)
 	// Register cleanup before creating DOM or WebGL resources, including for a forced script kill.
 	ns.atExit(exitTasks);
 	ns.disableLog("ALL");
