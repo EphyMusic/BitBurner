@@ -1,5 +1,5 @@
 import { colorize } from "./common";
-import { runContract } from "./contract";
+import { runContract, stringifyContractData } from "./contract";
 
 type RGBColor = { r: number; g: number; b: number };
 
@@ -63,7 +63,7 @@ export class ScannedServer {
     private contractKey(contract: CodingContractObject): string {
         return JSON.stringify({
             type: contract.type,
-            data: contract.data,
+            data: stringifyContractData(contract.data),
             description: contract.description,
         });
     }

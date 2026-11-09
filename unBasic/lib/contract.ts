@@ -1,4 +1,8 @@
 
+export function stringifyContractData(data: CodingContractObject["data"]): string {
+    return JSON.stringify(data, (_key, value) => typeof value === "bigint" ? value.toString() : value);
+}
+
 export function runContract(ns: NS, contract: CodingContractObject): boolean | string | undefined {
     const contractType = contract.type;
     switch (contractType) {
@@ -77,7 +81,7 @@ function submitAnswer(ns: NS, contract: CodingContractObject, answer: number | s
             ns.toast(`Failed attempt ${attempt + 1} for contract ${contract.type}`, "error", 1000);
         }
     }
-    return "Failed to solve contract " + contract.type + ". Last answer: " + answer + ". Input data: " + JSON.stringify(contract.data);
+    return "Failed to solve contract " + contract.type + ". Last answer: " + answer + ". Input data: " + stringifyContractData(contract.data);
 }
 
 function findLargestPrimeFactor(n: number) {
@@ -249,4 +253,20 @@ function compressRLE(input: string): string {
         i += runLength;
     }
     return result;
+}
+
+function mergeOverlappingIntervals(intervals: [number, number][]): [number, number][] {
+    if (intervals.length === 0) return [];
+    intervals.sort((a, b) => a[0] - b[0]);
+    const merged: [number, number][] = [intervals[0]];
+    for (let i = 1; i < intervals.length; i++) {
+        const last = merged[merged.length - 1];
+        const current = intervals[i];
+        if (current[0] <= last[1]) {
+            last[1] = Math.max(last[1], current[1]);
+        } else {
+            merged.push(current);
+        }
+    }
+    return merged;
 }
