@@ -1,5 +1,5 @@
-export const SAND_COLUMNS = 54;
-export const SAND_ROWS = 72;
+export const SAND_COLUMNS = 72;
+export const SAND_ROWS = 96;
 
 export interface ActivitySample {
 	at: number;
@@ -113,8 +113,10 @@ export class SandState {
 		this.changeClock += 1000 / 60;
 
 		while (distance !== 0) {
-			const progress = 1 - Math.abs(distance) / Math.max(1, this.changePeak);
-			const interval = 1 + progress * progress * 17;
+			const remaining = Math.abs(distance);
+			const peak = Math.max(1, this.changePeak);
+			const progress = peak > 1 ? Math.log(peak / remaining) / Math.log(peak) : 1;
+			const interval = 0.1 + progress * 16;
 			if (this.changeClock < interval) break;
 			this.changeClock -= interval;
 			if (distance > 0) this.addAtTop();

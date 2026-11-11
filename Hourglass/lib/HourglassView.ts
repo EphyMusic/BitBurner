@@ -36,9 +36,16 @@ precision mediump float;
 uniform float uParticle;
 varying vec3 vColor;
 void main() {
-	if (uParticle > 0.5 && max(abs(gl_PointCoord.x - 0.5), abs(gl_PointCoord.y - 0.5)) > 0.49) discard;
+	if (uParticle > 0.5 && distance(gl_PointCoord, vec2(0.5)) > 0.5) discard;
 	gl_FragColor = vec4(vColor, 1.0);
 }`;
+
+function particleJitter(index: number, salt: number): number {
+	let hash = Math.imul(index ^ salt, 0x45d9f3b);
+	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
+	hash ^= hash >>> 16;
+	return ((hash >>> 0) / 0xffffffff - 0.5) * 0.24;
+}
 
 /** Sidebar tab and WebGL hourglass view, scoped to this running script. */
 export class HourglassView {
@@ -542,7 +549,9 @@ export class HourglassView {
 				const col = index % SAND_COLUMNS;
 				const row = Math.floor(index / SAND_COLUMNS);
 				const pointColor = record.sand.falling[index] ? this.fallingColors : this.colors;
-				addParticle(glassX + (col + 0.5) * dx, glassY + (row + 0.5) * dy, pointColor);
+				const x = glassX + (col + 0.5 + particleJitter(index, 0x9e3779b9)) * dx;
+				const y = glassY + (row + 0.5 + particleJitter(index, 0x85ebca6b)) * dy;
+				addParticle(x, y, pointColor);
 			}
 		}
 
@@ -550,7 +559,7 @@ export class HourglassView {
 		this.uploadAndDraw(gl, outlines, gl.LINES, 0);
 		this.uploadAndDraw(
 			gl, this.particleVertices, gl.POINTS,
-			Math.max(1, Math.min(cellWidth * 0.6 / SAND_COLUMNS, (cellHeight - 62 * ratio) / SAND_ROWS) * 0.95),
+			Math.max(1, Math.max(cellWidth * 0.6 / SAND_COLUMNS, (cellHeight - 62 * ratio) / SAND_ROWS) * 1.4),
 			particleCount,
 		);
 	}
