@@ -19,6 +19,25 @@ type MoveChoice = {
 	predictedOwnLoss: number;
 	spentSecureEye: boolean;
 	blockingBonus: number;
+	captureBonus: number;
+	atariCaptureStones: number;
+	atariDefenseStones: number;
+	attackPlan: AttackPlan;
+	wallDefensePlan: DefensePlan;
+};
+
+type AttackPlan = {
+	chains: number;
+	libertiesReduced: number;
+	atariStones: number;
+	bonus: number;
+};
+
+type DefensePlan = {
+	chains: number;
+	libertiesAdded: number;
+	eyesAdded: number;
+	bonus: number;
 };
 
 type MoveDecision = {
@@ -34,10 +53,10 @@ type SimulatedMove = {
 
 //Buffer class
 class Buffer {
-	log:string[] = []
-	limit:number = 10
+	log:string[]
+	limit:number
 	persistent:string[] = []
-	constructor(limit:number = 10) {
+	constructor(limit:number = 15) {
 		this.limit = limit;
 		this.log = Array(this.limit).fill("");
 	}
@@ -60,9 +79,85 @@ class Buffer {
 	}
 
 	newEntry(entry:string) {
-		this.log.push(entry);
+		this.log.push(...wrapAnsiText("-" + entry, 62));
 		this.trimLog();
 	}
+}
+
+function wrapAnsiText(text: string, width: number): string[] {
+	const tokens: string[] = [];
+	for (let index = 0; index < text.length;) {
+		if (text.charCodeAt(index) === 0x1b && text[index + 1] === "[") {
+			let end = index + 2;
+			while (end < text.length) {
+				const code = text.charCodeAt(end);
+				end++;
+				if (code >= 0x40 && code <= 0x7e) break;
+			}
+			if (end > index + 2 && text.charCodeAt(end - 1) >= 0x40 && text.charCodeAt(end - 1) <= 0x7e) {
+				tokens.push(text.slice(index, end));
+				index = end;
+				continue;
+			}
+		}
+
+		const codePoint = text.codePointAt(index)!;
+		const character = String.fromCodePoint(codePoint);
+		tokens.push(character);
+		index += character.length;
+	}
+
+	const lines: string[] = [];
+	let remaining = tokens;
+	let activeAnsi: string[] = [];
+	while (remaining.filter((token) => !isAnsiToken(token)).length > width) {
+		let visibleCount = 0;
+		let lastSpace = -1;
+		let hardBreak = -1;
+		for (let index = 0; index < remaining.length; index++) {
+			const token = remaining[index];
+			if (isAnsiToken(token)) continue;
+
+			visibleCount++;
+			if (token === " " && visibleCount <= width) lastSpace = index;
+			if (visibleCount === width) hardBreak = index + 1;
+			if (visibleCount > width) break;
+		}
+
+		const hasBreakSpace = lastSpace > 0;
+		const breakIndex = hasBreakSpace ? lastSpace : hardBreak;
+		if (breakIndex <= 0) break;
+		lines.push(activeAnsi.join("") + remaining.slice(0, breakIndex).join(""));
+
+		const consumed = breakIndex + (hasBreakSpace ? 1 : 0);
+		for (const token of remaining.slice(0, consumed)) activeAnsi = updateActiveAnsi(activeAnsi, token);
+		remaining = remaining.slice(consumed);
+		while (remaining.length > 0 && (isAnsiToken(remaining[0]) || /^\s$/u.test(remaining[0]))) {
+			activeAnsi = updateActiveAnsi(activeAnsi, remaining[0]);
+			remaining = remaining.slice(1);
+		}
+	}
+
+	lines.push(activeAnsi.join("") + remaining.join(""));
+	return lines;
+}
+
+function isAnsiToken(token: string): boolean {
+	return token.charCodeAt(0) === 0x1b;
+}
+
+function updateActiveAnsi(active: string[], token: string): string[] {
+	if (!isAnsiToken(token) || !token.endsWith("m")) return active;
+	const parameters = token.slice(2, -1);
+	const codes = parameters.split(";");
+	for (let index = 0; index < codes.length; index++) {
+		const code = Number(codes[index]);
+		if (code === 0) return [];
+		if (code === 38 || code === 48) {
+			index += Number(codes[index + 1]) === 2 ? 4 : Number(codes[index + 1]) === 5 ? 2 : 1;
+		}
+	}
+	return [...active, token];
 }
 
 // Color util
@@ -128,19 +223,20 @@ const BOARD_SIZES = [5, 7, 9, 13] as const;
 const LOG_FILE = "Go/log/log.txt";
 const MAX_LOG_CHARS = 2_000_000;
 const KEEP_LOG_CHARS = 500_000;
-const LIMIT_RUNS = true;
-const RUN_LIMIT = 20;
+const LIMIT_RUNS = false;
+const RUN_LIMIT = 40;
 const buffer = new Buffer();
 
 // All functions
 export async function main(ns: NS): Promise<void> {
-	ns.ui.setTailTitle("IPvGO - Init")
+	ns.ui.setTailTitle("IPvGO - Init");
+	ns.ui.setTailFontSize(14);
 	ns.ui.openTail();
 	ns.disableLog("ALL");
 	ns.clearLog();
-	// const opponentArg = ns.args[0] ?? "Netburners";
-	const opponentArg = await ns.prompt("Select an opponent:", { type: "select", choices: OPPONENTS.map(String) })
+	const opponentArg = ns.args[0] ?? await ns.prompt("Select an opponent:", { type: "select", choices: OPPONENTS.map(String) })
 	if (opponentArg == "") {
+		ns.print("No opponent selected. Exiting.");
 		ns.exit();
 	}
 	if (typeof opponentArg !== "string" || !OPPONENTS.includes(opponentArg as (typeof OPPONENTS)[number])) {
@@ -148,12 +244,13 @@ export async function main(ns: NS): Promise<void> {
 	}
 	const opponent = opponentArg as GoOpponent;
 
-	const sizeArg = Number(await ns.prompt("Select a board size:", { type: "select", choices: BOARD_SIZES.map(String) }));
+	const sizeArg = Number(ns.args[1] ?? await ns.prompt("Select a board size:", { type: "select", choices: BOARD_SIZES.map(String) }));
 	if (!BOARD_SIZES.includes(sizeArg as (typeof BOARD_SIZES)[number])) {
 		throw new Error(`IPvGO board size must be one of ${BOARD_SIZES.join(", ")}.`);
 	}
 	const boardSize = sizeArg as (typeof BOARD_SIZES)[number];
-	const territoryFirst = opponent !== "Netburners";
+	// const territoryFirst = opponent !== "Netburners";
+	const territoryFirst = true;
 	const log = createLogger(ns, new Date().toISOString());
 
 	let wins = 0;
@@ -213,7 +310,7 @@ export async function main(ns: NS): Promise<void> {
 			}
 
 			const gameStateBefore = ns.go.getGameState();
-			const decision = chooseMove(board, validMoves, currentAnalysis, gameStateBefore.komi, territoryFirst);
+			const decision = chooseMove(board, validMoves, currentAnalysis, gameStateBefore.komi, territoryFirst, result?.type === "pass");
 			const move = decision.move;
 			const moveIntent = move
 				? describeMoveIntent(move, ownAtari, opponentAtari, validMoves, board.length)
@@ -246,6 +343,11 @@ export async function main(ns: NS): Promise<void> {
 				predictedOwnLoss: move?.predictedOwnLoss ?? null,
 				spentSecureEye: move?.spentSecureEye ?? false,
 				blockingBonus: move?.blockingBonus ?? 0,
+				captureBonus: move?.captureBonus ?? 0,
+				atariCaptureStones: move?.atariCaptureStones ?? 0,
+				atariDefenseStones: move?.atariDefenseStones ?? 0,
+				attackPlan: move?.attackPlan ?? null,
+				wallDefensePlan: move?.wallDefensePlan ?? null,
 				komi: gameStateBefore.komi,
 				legalMoveCount,
 				boardBefore: board,
@@ -285,7 +387,7 @@ export async function main(ns: NS): Promise<void> {
 					const hasCaptureMove = hasImmediateCapture(postPassAnalysis, postPassValidMoves, boardAfter.length);
 					const followUpDecision = hasCaptureMove
 						? null
-						: chooseMove(boardAfter, postPassValidMoves, postPassAnalysis, scoreAfterResponse.komi, territoryFirst);
+						: chooseMove(boardAfter, postPassValidMoves, postPassAnalysis, scoreAfterResponse.komi, territoryFirst, true);
 					const followUpMove = followUpDecision?.move ?? null;
 					const blackNodes = countColorStones(postPassAnalysis, "X");
 					const hasSafeScoringMove = followUpMove !== null
@@ -451,13 +553,13 @@ function chooseMove(
 	currentAnalysis: ReturnType<typeof analyze>,
 	komi: number,
 	territoryFirst: boolean,
+	opponentPassed = false,
 ): MoveDecision {
 	const size = board.length;
 	const legalMoveCount = validMoves.reduce((count, column) => count + column.filter(Boolean).length, 0);
 	if (legalMoveCount === 0) return { move: null, passReason: "no legal moves" };
 
 	const position = board.map((column) => column.split(""));
-	const currentBoardKey = boardKey(position);
 	const currentScore = evaluate(position, currentAnalysis, komi, territoryFirst);
 	const currentBlackNodes = countColorStones(currentAnalysis, "X");
 	let bestScore = -Infinity;
@@ -468,18 +570,35 @@ function chooseMove(
 		for (let y = 0; y < size; y++) {
 			if (!validMoves[x]?.[y]) continue;
 
-			const afterPlayer = simulateMove(position, x, y, "X", currentBoardKey);
+			const afterPlayer = simulateMove(position, x, y, "X", position);
 			if (!afterPlayer) continue;
 
 			const playerAnalysis = afterPlayer.analysis;
-			const worstReply = findWorstOpponentReply(afterPlayer.board, playerAnalysis, currentBoardKey, komi, territoryFirst);
+			const worstReply = findWorstOpponentReply(
+				afterPlayer.board,
+				playerAnalysis,
+				position,
+				komi,
+				territoryFirst,
+				currentAnalysis,
+			);
 			const predictedOwnLoss = Math.max(0, countColorStones(playerAnalysis, "X") - worstReply.blackNodes);
 			const pointId = x * size + y;
 			const spentSecureEye = currentAnalysis.chains.some(
 				(chain) => chain.color === "X" && chain.secureEyes.has(pointId),
 			);
+			const atariCaptureStones = currentAnalysis.chains
+				.filter((chain) => chain.color === "O" && chain.liberties.size === 1 && chain.liberties.has(pointId))
+				.filter((chain) => chain.stones.every(([sx, sy]) => afterPlayer.board[sx][sy] === "."))
+				.reduce((count, chain) => count + chain.stones.length, 0);
+			const atariDefenseStones = currentAnalysis.chains
+				.filter((chain) => chain.color === "X" && chain.liberties.size === 1 && chain.liberties.has(pointId))
+				.filter((chain) => chain.stones.every(([sx, sy]) => afterPlayer.board[sx][sy] === "X"))
+				.reduce((count, chain) => count + chain.stones.length, 0);
 			const blockingBonus = territoryFirst ? getBlockingMoveBonus(position, currentAnalysis, x, y) : 0;
-			const score = worstReply.score - currentScore + blockingBonus;
+			const captureBonus = atariCaptureStones * 2.5;
+			const score = worstReply.score + worstReply.attackPlan.bonus + worstReply.wallDefensePlan.bonus
+				+ captureBonus - currentScore + blockingBonus;
 			const choice: MoveChoice = {
 				point: [x, y],
 				score,
@@ -491,6 +610,11 @@ function chooseMove(
 				predictedOwnLoss,
 				spentSecureEye,
 				blockingBonus,
+				captureBonus,
+				atariCaptureStones,
+				atariDefenseStones,
+				attackPlan: worstReply.attackPlan,
+				wallDefensePlan: worstReply.wallDefensePlan,
 			};
 			candidateMoves.push(choice);
 		}
@@ -498,6 +622,11 @@ function chooseMove(
 
 	if (candidateMoves.length === 0) {
 		return { move: null, passReason: "no legal move passed the local rules simulation" };
+	}
+
+	if (opponentPassed) {
+		const captureMoves = candidateMoves.filter((choice) => choice.atariCaptureStones > 0);
+		if (captureMoves.length > 0) candidateMoves = captureMoves;
 	}
 
 	if (
@@ -542,29 +671,155 @@ function chooseMove(
 function findWorstOpponentReply(
 	board: string[][],
 	analysis: ReturnType<typeof analyze>,
-	forbiddenBoardKey: string,
+	forbiddenBoard: string[][],
 	komi: number,
 	territoryFirst: boolean,
-): { score: number; point: Point | null; blackNodes: number } {
+	initialAnalysis: ReturnType<typeof analyze>,
+): {
+	score: number;
+	point: Point | null;
+	blackNodes: number;
+	board: string[][];
+	analysis: ReturnType<typeof analyze>;
+	attackPlan: AttackPlan;
+	wallDefensePlan: DefensePlan;
+} {
 	const size = board.length;
 	let worstScore = evaluate(board, analysis, komi, territoryFirst);
+	let worstAttackPlan = territoryFirst
+		? getPersistentAttackPlan(initialAnalysis, analysis, board, analysis)
+		: emptyAttackPlan();
+	let worstWallDefensePlan = getPersistentDefensePlan(initialAnalysis, analysis, analysis);
+	let worstValue = worstScore + worstAttackPlan.bonus + worstWallDefensePlan.bonus;
 	let worstPoint: Point | null = null;
 	let worstBlackNodes = countColorStones(analysis, "X");
+	let worstBoard = board;
+	let worstAnalysis = analysis;
 
 	for (let x = 0; x < size; x++) {
 		for (let y = 0; y < size; y++) {
-			const response = simulateMove(board, x, y, "O", forbiddenBoardKey);
+			const response = simulateMove(board, x, y, "O", forbiddenBoard);
 			if (!response) continue;
 			const score = evaluate(response.board, response.analysis, komi, territoryFirst);
-			if (score < worstScore) {
+			const attackPlan = territoryFirst
+				? getPersistentAttackPlan(initialAnalysis, analysis, response.board, response.analysis)
+				: emptyAttackPlan();
+			const wallDefensePlan = getPersistentDefensePlan(initialAnalysis, analysis, response.analysis);
+			const value = score + attackPlan.bonus + wallDefensePlan.bonus;
+			if (value < worstValue) {
 				worstScore = score;
+				worstAttackPlan = attackPlan;
+				worstWallDefensePlan = wallDefensePlan;
+				worstValue = value;
 				worstPoint = [x, y];
 				worstBlackNodes = countColorStones(response.analysis, "X");
+				worstBoard = response.board;
+				worstAnalysis = response.analysis;
 			}
 		}
 	}
 
-	return { score: worstScore, point: worstPoint, blackNodes: worstBlackNodes };
+	return {
+		score: worstScore,
+		point: worstPoint,
+		blackNodes: worstBlackNodes,
+		board: worstBoard,
+		analysis: worstAnalysis,
+		attackPlan: worstAttackPlan,
+		wallDefensePlan: worstWallDefensePlan,
+	};
+}
+
+function getPersistentDefensePlan(
+	initialAnalysis: ReturnType<typeof analyze>,
+	afterPlayerAnalysis: ReturnType<typeof analyze>,
+	afterReplyAnalysis: ReturnType<typeof analyze>,
+): DefensePlan {
+	const plan: DefensePlan = { chains: 0, libertiesAdded: 0, eyesAdded: 0, bonus: 0 };
+	const evaluatedChains = new Set<number>();
+
+	for (const initialChain of initialAnalysis.chains) {
+		if (initialChain.color !== "X" || initialChain.liberties.size > 3 || initialChain.secureEyes.size >= 2) continue;
+
+		const playerChain = findSurvivingChain(initialChain, afterPlayerAnalysis);
+		const replyChain = findSurvivingChain(initialChain, afterReplyAnalysis);
+		if (!playerChain || !replyChain || evaluatedChains.has(replyChain.id)) continue;
+
+		const libertiesAdded = Math.min(
+			Math.max(0, playerChain.chain.liberties.size - initialChain.liberties.size),
+			Math.max(0, replyChain.chain.liberties.size - initialChain.liberties.size),
+		);
+		const eyesAdded = Math.min(
+			Math.max(0, playerChain.chain.secureEyes.size - initialChain.secureEyes.size),
+			Math.max(0, replyChain.chain.secureEyes.size - initialChain.secureEyes.size),
+		);
+		if (libertiesAdded === 0 && eyesAdded === 0) continue;
+
+		evaluatedChains.add(replyChain.id);
+		plan.chains++;
+		plan.libertiesAdded += libertiesAdded;
+		plan.eyesAdded += eyesAdded;
+		const sizeWeight = Math.min(Math.sqrt(initialChain.stones.length), 2);
+		plan.bonus += libertiesAdded * (2 + sizeWeight * 0.5) + eyesAdded * (3 + sizeWeight);
+		if (initialChain.secureEyes.size < 2 && replyChain.chain.secureEyes.size >= 2) {
+			plan.bonus += 2 + sizeWeight;
+		}
+	}
+
+	return plan;
+}
+
+function emptyAttackPlan(): AttackPlan {
+	return { chains: 0, libertiesReduced: 0, atariStones: 0, bonus: 0 };
+}
+
+function getPersistentAttackPlan(
+	initialAnalysis: ReturnType<typeof analyze>,
+	afterPlayerAnalysis: ReturnType<typeof analyze>,
+	boardAfterReply: string[][],
+	analysisAfterReply: ReturnType<typeof analyze>,
+): AttackPlan {
+	const plan = emptyAttackPlan();
+	const evaluatedChains = new Set<number>();
+
+	for (const initialChain of initialAnalysis.chains) {
+		if (initialChain.color !== "O" || initialChain.liberties.size < 2 || initialChain.liberties.size > 4) continue;
+		if (initialChain.secureEyes.size >= 2) continue;
+
+		const playerChain = findSurvivingChain(initialChain, afterPlayerAnalysis);
+		if (!playerChain || playerChain.chain.liberties.size >= initialChain.liberties.size) continue;
+
+		const replyChain = findSurvivingChain(initialChain, analysisAfterReply);
+		if (!replyChain || replyChain.chain.liberties.size >= initialChain.liberties.size) continue;
+		if (replyChain.chain.liberties.size > playerChain.chain.liberties.size) continue;
+		if (evaluatedChains.has(replyChain.id)) continue;
+		evaluatedChains.add(replyChain.id);
+
+		const libertyReduction = initialChain.liberties.size - replyChain.chain.liberties.size;
+		plan.chains++;
+		plan.libertiesReduced += libertyReduction;
+		plan.bonus += libertyReduction * (1.5 + Math.sqrt(initialChain.stones.length) * 0.5);
+
+		if (replyChain.chain.liberties.size !== 1) continue;
+		const liberty = Array.from(replyChain.chain.liberties)[0];
+		plan.atariStones += replyChain.chain.stones.length;
+		plan.bonus += 2 + replyChain.chain.stones.length * 0.75;
+	}
+
+	return plan;
+}
+
+function findSurvivingChain(
+	originalChain: Chain,
+	analysis: ReturnType<typeof analyze>,
+): { id: number; chain: Chain } | null {
+	for (const [x, y] of originalChain.stones) {
+		const chainId = analysis.chainAt[x][y];
+		if (chainId >= 0 && analysis.chains[chainId].color === originalChain.color) {
+			return { id: chainId, chain: analysis.chains[chainId] };
+		}
+	}
+	return null;
 }
 
 function countColorStones(analysis: ReturnType<typeof analyze>, color: "X" | "O"): number {
@@ -595,14 +850,6 @@ function describeMoveIntent(
 	size: number,
 ): string {
 	const [x, y] = move.point;
-	const ownAtariAtMove = ownAtari.filter((chain) => {
-		const liberty = Array.from(chain.liberties)[0];
-		return Math.floor(liberty / size) === x && liberty % size === y;
-	});
-	const opponentAtariAtMove = opponentAtari.filter((chain) => {
-		const liberty = Array.from(chain.liberties)[0];
-		return Math.floor(liberty / size) === x && liberty % size === y;
-	});
 	const missedCaptures = opponentAtari.filter((chain) => {
 		const liberty = Array.from(chain.liberties)[0];
 		const captureX = Math.floor(liberty / size);
@@ -617,11 +864,30 @@ function describeMoveIntent(
 	});
 	const reasons: string[] = [];
 
-	if (move.capturedStones > 0) reasons.push(`captures ${move.capturedStones} stone${move.capturedStones === 1 ? "" : "s"}`);
-	if (opponentAtariAtMove.length > 0) reasons.push(`captures ${opponentAtariAtMove.length} opponent atari chain${opponentAtariAtMove.length === 1 ? "" : "s"}`);
-	if (ownAtariAtMove.length > 0) reasons.push(`plays at the last liberty of ${ownAtariAtMove.length} own atari chain${ownAtariAtMove.length === 1 ? "" : "s"}`);
+	if (move.atariCaptureStones > 0) {
+		reasons.push(`captures ${move.atariCaptureStones} stone${move.atariCaptureStones === 1 ? "" : "s"} from atari`);
+	} else if (move.capturedStones > 0) {
+		reasons.push(`captures ${move.capturedStones} stone${move.capturedStones === 1 ? "" : "s"}`);
+	}
+	if (move.atariDefenseStones > 0) {
+		reasons.push(`defends ${move.atariDefenseStones} own stone${move.atariDefenseStones === 1 ? "" : "s"} in atari`);
+	}
+	if (move.attackPlan.chains > 0) {
+		const atariDetail = move.attackPlan.atariStones > 0
+			? `, ${move.attackPlan.atariStones} stone${move.attackPlan.atariStones === 1 ? "" : "s"} in atari with a legal follow-up capture`
+			: "";
+		reasons.push(
+			`pressures ${move.attackPlan.chains} enemy chain${move.attackPlan.chains === 1 ? "" : "s"}; closes ${move.attackPlan.libertiesReduced} liberties through the modeled reply${atariDetail}`,
+		);
+	}
+	if (move.wallDefensePlan.chains > 0) {
+		const improvements: string[] = [];
+		if (move.wallDefensePlan.libertiesAdded > 0) improvements.push(`${move.wallDefensePlan.libertiesAdded} liberties`);
+		if (move.wallDefensePlan.eyesAdded > 0) improvements.push(`${move.wallDefensePlan.eyesAdded} eyes`);
+		reasons.push(`shores up ${move.wallDefensePlan.chains} threatened own chain${move.wallDefensePlan.chains === 1 ? "" : "s"} (${improvements.join(", ")})`);
+	}
 	if (move.blockingBonus > 0) reasons.push("blocks opponent expansion");
-	if (reasons.length === 0) reasons.push(`highest-scoring eligible move under one-ply evaluation (${move.score.toFixed(1)})`);
+	if (reasons.length === 0) reasons.push(`highest-scoring eligible move under the modeled reply (${move.score.toFixed(1)})`);
 	if (missedCaptures.length > 0) reasons.push(`passes up ${missedCaptures.length} legal capture point${missedCaptures.length === 1 ? "" : "s"}`);
 	if (missedDefenses.length > 0) reasons.push(`leaves ${missedDefenses.length} own chain${missedDefenses.length === 1 ? "" : "s"} in atari`);
 	if (move.predictedOwnLoss > 0) reasons.push(`predicts losing ${move.predictedOwnLoss} own stone${move.predictedOwnLoss === 1 ? "" : "s"} to the modeled reply`);
@@ -652,7 +918,7 @@ function simulateMove(
 	x: number,
 	y: number,
 	color: "X" | "O",
-	forbiddenBoardKey: string,
+	forbiddenBoard: string[][],
 ): SimulatedMove | null {
 	const size = board.length;
 	if (board[x]?.[y] !== ".") return null;
@@ -679,12 +945,17 @@ function simulateMove(
 	const nextAnalysis = captured === 0 ? placedAnalysis : analyze(next);
 	const ownChainId = nextAnalysis.chainAt[x][y];
 	if (ownChainId < 0 || nextAnalysis.chains[ownChainId].liberties.size === 0) return null;
-	if (boardKey(next) === forbiddenBoardKey) return null;
+	if (boardsEqual(next, forbiddenBoard)) return null;
 	return { board: next, analysis: nextAnalysis, captured };
 }
 
-function boardKey(board: string[][]): string {
-	return board.map((column) => column.join("")).join("|");
+function boardsEqual(first: string[][], second: string[][]): boolean {
+	for (let x = 0; x < first.length; x++) {
+		for (let y = 0; y < first[x].length; y++) {
+			if (first[x][y] !== second[x][y]) return false;
+		}
+	}
+	return true;
 }
 
 function createLogger(ns: NS, runId: string): (entry: Record<string, unknown>) => void {
@@ -769,18 +1040,28 @@ function analyze(board: string[][]): { chains: Chain[]; chainAt: number[][] } {
 		for (let y = 0; y < size; y++) {
 			if (board[x][y] !== ".") continue;
 			const adjacent = neighbors(x, y, size);
-			const eyeColor = adjacent
-				.map(([nx, ny]) => board[nx][ny])
-				.find((color) => color === "X" || color === "O");
-			if (!eyeColor || !adjacent.every(([nx, ny]) => board[nx][ny] === eyeColor || board[nx][ny] === "#")) continue;
+			let eyeColor: "X" | "O" | null = null;
+			let isEye = true;
+			const adjacentChains: number[] = [];
+			for (const [nx, ny] of adjacent) {
+				const color = board[nx][ny];
+				if (color === "#") continue;
+				if (color !== "X" && color !== "O") {
+					isEye = false;
+					break;
+				}
+				if (eyeColor !== null && color !== eyeColor) {
+					isEye = false;
+					break;
+				}
+				eyeColor = color;
+				const chainId = chainAt[nx][ny];
+				if (!adjacentChains.includes(chainId)) adjacentChains.push(chainId);
+			}
+			if (!isEye || eyeColor === null) continue;
 
 			const pointId = x * size + y;
-			const adjacentChains = new Set(
-				adjacent
-					.filter(([nx, ny]) => board[nx][ny] === eyeColor)
-					.map(([nx, ny]) => chainAt[nx][ny]),
-			);
-			if (Array.from(adjacentChains).some((chainId) => chains[chainId].liberties.size <= 1)) continue;
+			if (adjacentChains.some((chainId) => chains[chainId].liberties.size <= 1)) continue;
 			for (const chainId of adjacentChains) {
 				chains[chainId].secureEyes.add(pointId);
 			}
@@ -893,10 +1174,21 @@ function distancesTo(board: string[][], color: "X" | "O", territoryFirst: boolea
 }
 
 function neighbors(x: number, y: number, size: number): Point[] {
-	const points: Point[] = [];
-	if (x > 0) points.push([x - 1, y]);
-	if (x + 1 < size) points.push([x + 1, y]);
-	if (y > 0) points.push([x, y - 1]);
-	if (y + 1 < size) points.push([x, y + 1]);
-	return points;
+	let cache = neighborCache.get(size);
+	if (!cache) {
+		cache = Array.from({ length: size }, (_, cx) =>
+			Array.from({ length: size }, (_, cy) => {
+				const points: Point[] = [];
+				if (cx > 0) points.push([cx - 1, cy]);
+				if (cx + 1 < size) points.push([cx + 1, cy]);
+				if (cy > 0) points.push([cx, cy - 1]);
+				if (cy + 1 < size) points.push([cx, cy + 1]);
+				return points;
+			}),
+		);
+		neighborCache.set(size, cache);
+	}
+	return cache[x][y];
 }
+
+const neighborCache = new Map<number, Point[][][]>();
