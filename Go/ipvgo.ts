@@ -310,10 +310,26 @@ export async function main(ns: NS): Promise<void> {
 			}
 
 			const gameStateBefore = ns.go.getGameState();
-			const decision = chooseMove(board, validMoves, currentAnalysis, gameStateBefore.komi, territoryFirst, result?.type === "pass");
+			const decision = chooseMove(
+				board,
+				validMoves,
+				currentAnalysis,
+				gameStateBefore.komi,
+				territoryFirst,
+				result?.type === "pass",
+				gameStateBefore.blackScore - gameStateBefore.whiteScore,
+				turn === 0,
+			);
 			const move = decision.move;
 			const moveIntent = move
-				? describeMoveIntent(move, ownAtari, opponentAtari, validMoves, board.length)
+				? describeMoveIntent(
+					move,
+					ownAtari,
+					opponentAtari,
+					validMoves,
+					board.length,
+					turn === 0 && move.point[0] === Math.floor(board.length / 2) && move.point[1] === Math.floor(board.length / 2),
+				)
 				: decision.passReason;
 			if (move) {
 				buffer.newEntry(infoText(
@@ -387,7 +403,15 @@ export async function main(ns: NS): Promise<void> {
 					const hasCaptureMove = hasImmediateCapture(postPassAnalysis, postPassValidMoves, boardAfter.length);
 					const followUpDecision = hasCaptureMove
 						? null
-						: chooseMove(boardAfter, postPassValidMoves, postPassAnalysis, scoreAfterResponse.komi, territoryFirst, true);
+						: chooseMove(
+							boardAfter,
+							postPassValidMoves,
+							postPassAnalysis,
+							scoreAfterResponse.komi,
+							territoryFirst,
+							true,
+							scoreAfterResponse.blackScore - scoreAfterResponse.whiteScore,
+						);
 					const followUpMove = followUpDecision?.move ?? null;
 					const blackNodes = countColorStones(postPassAnalysis, "X");
 					const hasSafeScoringMove = followUpMove !== null
@@ -554,8 +578,18 @@ function chooseMove(
 	komi: number,
 	territoryFirst: boolean,
 	opponentPassed = false,
+	scoreLeadAfterKomi = -Infinity,
+	forceCenterOpening = false,
 ): MoveDecision {
 	const size = board.length;
+	if (
+		opponentPassed
+		&& scoreLeadAfterKomi > 0
+		&& !currentAnalysis.chains.some((chain) => chain.color === "O")
+	) {
+		return { move: null, passReason: "opponent passed with no stones remaining while Black leads" };
+	}
+
 	const legalMoveCount = validMoves.reduce((count, column) => count + column.filter(Boolean).length, 0);
 	if (legalMoveCount === 0) return { move: null, passReason: "no legal moves" };
 
@@ -624,6 +658,14 @@ function chooseMove(
 		return { move: null, passReason: "no legal move passed the local rules simulation" };
 	}
 
+	if (forceCenterOpening) {
+		const center = Math.floor(size / 2);
+		const centerMove = candidateMoves.find(
+			(choice) => choice.point[0] === center && choice.point[1] === center,
+		);
+		if (centerMove) return { move: centerMove, passReason: null };
+	}
+
 	if (opponentPassed) {
 		const captureMoves = candidateMoves.filter((choice) => choice.atariCaptureStones > 0);
 		if (captureMoves.length > 0) candidateMoves = captureMoves;
@@ -631,6 +673,7 @@ function chooseMove(
 
 	if (
 		territoryFirst
+		&& scoreLeadAfterKomi > 0
 		&& candidateMoves.length === legalMoveCount
 		&& candidateMoves.every((choice) => choice.spentSecureEye)
 		&& !candidateMoves.some((choice) => choice.capturedStones > 0)
@@ -848,6 +891,7 @@ function describeMoveIntent(
 	opponentAtari: Chain[],
 	validMoves: boolean[][],
 	size: number,
+	centerOpening = false,
 ): string {
 	const [x, y] = move.point;
 	const missedCaptures = opponentAtari.filter((chain) => {
@@ -864,6 +908,7 @@ function describeMoveIntent(
 	});
 	const reasons: string[] = [];
 
+	if (centerOpening) reasons.push("opens at the center");
 	if (move.atariCaptureStones > 0) {
 		reasons.push(`captures ${move.atariCaptureStones} stone${move.atariCaptureStones === 1 ? "" : "s"} from atari`);
 	} else if (move.capturedStones > 0) {
