@@ -55,9 +55,9 @@ export class HacknetNode {
             ? `N:${this.idx}| ${colorize("MAX", 0, 255, 100)} `
             : `N:${this.idx}|L:${level}|R:${ram}|C:${cores}`;
 
-        if (this.stats.cache) output += `|Ch:${this.stats.cache}`;
-        if (this.stats.hashCapacity) output += `|Hc:${this.stats.hashCapacity}`;
-        if (this.stats.ramUsed) output += `|Ru:${this.stats.ramUsed}`;
+        if (this.stats.cache) output += `|Ch:${this.stats.cache ?? "N/A"}`;
+        if (this.stats.hashCapacity) output += `|Hc:${this.stats.hashCapacity ?? "N/A"}`;
+        if (this.stats.ramUsed) output += `|Ru:${this.stats.ramUsed ?? "N/A"}`;
         const restTime = ns.format.time(this.restTimer)
             .replace("second", "s")
             .replace("ss", "s")

@@ -255,7 +255,6 @@ export async function main(ns: NS): Promise<void> {
 
 	let wins = 0;
 	let losses = 0;
-	let draws = 0;
 	let game = 0;
 
 	buffer.newEntry(infoText(`[IPvGO] Playing ${opponent} on a ${boardSize}x${boardSize} board.`));
@@ -477,7 +476,6 @@ export async function main(ns: NS): Promise<void> {
 
 				if (outcome === "win") wins++;
 				else if (outcome === "loss") losses++;
-				else draws++;
 
 				buffer.newEntry(
 					infoText(`[IPvGO] Game ${game} over: `) +
@@ -502,7 +500,7 @@ export async function main(ns: NS): Promise<void> {
 					previousMove: finalState.previousMove,
 					board: finalBoard,
 					nodes: finalNodes,
-					record: { wins, losses, draws },
+					record: { wins, losses },
 				});
 			}
 
@@ -512,7 +510,7 @@ export async function main(ns: NS): Promise<void> {
 			persist.push(persistentText(`Score: Black: ${state.blackScore}, White: ${state.whiteScore}`));
 			persist.push(persistentText(`Komi: ${state.komi}; lead after komi: ${state.blackScore - state.whiteScore}`));
 			const stats = ns.go.analysis.getStats();
-			persist.push(persistentText(`Wins: ${wins}, Losses: ${losses}, Draws: ${draws}`));
+			persist.push(persistentText(`Wins: ${wins}, Losses: ${losses}`));
 			persist.push(persistentText(`Bonus: ${ns.format.number(stats[opponent]?.bonusPercent ?? 0, 2)}%`))
 			persist.push(persistentText(`Win Streak: ${stats[opponent]?.winStreak ?? 0}`));
 			buffer.alterPersistent(persist);
